@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner", "RoslynRunner\RoslynRunner.csproj", "{DE62C9CA-7A69-49D4-BB9C-4A0F43D3C723}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Core", "RoslynRunner.Core\RoslynRunner.Core.csproj", "{F6CDF276-428E-4E50-B4BD-880FC5D24287}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Abstractions", "RoslynRunner.Abstractions\RoslynRunner.Abstractions.csproj", "{97D40E66-D7DE-4D1F-BC3D-D624634BE628}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DE62C9CA-7A69-49D4-BB9C-4A0F43D3C723}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE62C9CA-7A69-49D4-BB9C-4A0F43D3C723}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE62C9CA-7A69-49D4-BB9C-4A0F43D3C723}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE62C9CA-7A69-49D4-BB9C-4A0F43D3C723}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6CDF276-428E-4E50-B4BD-880FC5D24287}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6CDF276-428E-4E50-B4BD-880FC5D24287}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6CDF276-428E-4E50-B4BD-880FC5D24287}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6CDF276-428E-4E50-B4BD-880FC5D24287}.Release|Any CPU.Build.0 = Release|Any CPU
+		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
