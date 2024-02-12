@@ -3,18 +3,18 @@ namespace RoslynRunner;
 public class CommandRunningService(
     IRunQueue runQueue, 
     RunCommandProcessor processor,
-    ILogger<CommandRunningService> logger) : BackgroundService
+    ILogger<CommandRunningService> logger,
+    ICancellationTokenManager cancellationTokenManager) : BackgroundService
 {
-    private CancellationTokenSource? _currentCancellationTokenSource;
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            _currentCancellationTokenSource = new CancellationTokenSource();
             try
             {
                 RunCommand runCommand = await runQueue.Dequeue(stoppingToken);
-                await processor.ProcessRunCommand(runCommand, _currentCancellationTokenSource.Token);
+                await processor.ProcessRunCommand(runCommand, cancellationTokenManager.GetCancellationToken());
             }
             catch (Exception e)
             {
@@ -25,7 +25,7 @@ public class CommandRunningService(
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
-        _currentCancellationTokenSource?.Cancel();
+        cancellationTokenManager.CancelCurrentTask();
         return base.StopAsync(cancellationToken);
     }
 }

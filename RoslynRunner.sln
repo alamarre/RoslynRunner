@@ -6,6 +6,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Core", "Roslyn
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Abstractions", "RoslynRunner.Abstractions\RoslynRunner.Abstractions.csproj", "{97D40E66-D7DE-4D1F-BC3D-D624634BE628}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Utilities", "Utilities", "{77FAAA3E-1EE7-46DF-8B33-51F1BEF1D17D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Utilities.InvocationTrees", "RoslynRunner.Utilities.InvocationTrees\RoslynRunner.Utilities.InvocationTrees.csproj", "{75E6090D-0F05-48A4-B503-7BEB340732C3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +28,12 @@ Global
 		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{97D40E66-D7DE-4D1F-BC3D-D624634BE628}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75E6090D-0F05-48A4-B503-7BEB340732C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75E6090D-0F05-48A4-B503-7BEB340732C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75E6090D-0F05-48A4-B503-7BEB340732C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75E6090D-0F05-48A4-B503-7BEB340732C3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{75E6090D-0F05-48A4-B503-7BEB340732C3} = {77FAAA3E-1EE7-46DF-8B33-51F1BEF1D17D}
 	EndGlobalSection
 EndGlobal

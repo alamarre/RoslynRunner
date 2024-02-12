@@ -6,26 +6,27 @@ using RoslynRunner.SolutionProcessors;
 
 namespace RoslynRunner;
 
-public class RunCommandProcessor
+public class RunCommandProcessor(ILogger<RunCommandProcessor> logger)
 {
-    Dictionary<string, Solution> _persistentSolutions = new Dictionary<string, Solution>();
+    private readonly Dictionary<string, Solution> _persistentSolutions = new Dictionary<string, Solution>();
 
     public void RemovePersistedSolution(string solution)
     {
         _persistentSolutions.Remove(solution);
     }
 
-    public List<string> GetPeristedSolutions()
+    public List<string> GetPersistedSolutions()
     {
         return _persistentSolutions.Keys.ToList();
     }
     
     public async Task ProcessRunCommand(RunCommand runCommand, CancellationToken cancellationToken)
     {
+        logger.LogInformation("processing run command");
         if (!_persistentSolutions.TryGetValue(runCommand.PrimarySolution, out var solution))
         {
             MSBuildWorkspace workspace = MSBuildWorkspace.Create();
-            solution = await CompilationTools.GetSolution(workspace, runCommand.PrimarySolution, null);
+            solution = await CompilationTools.GetSolution(workspace, runCommand.PrimarySolution, logger);
             if (runCommand.PersistSolution)
             {
                 _persistentSolutions.Add(runCommand.PrimarySolution, solution);
@@ -47,6 +48,7 @@ public class RunCommandProcessor
             }
 
             var compilation = await project.GetCompilationAsync(cancellationToken);
+            
             if (compilation == null)
             {
                 throw new Exception();
@@ -76,6 +78,6 @@ public class RunCommandProcessor
         }
 
         await processor.ProcessSolution(solution, runCommand.Context, cancellationToken);
-        
+        logger.LogInformation("run command processed");
     }
 }
