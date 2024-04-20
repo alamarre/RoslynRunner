@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace RoslynRunner;
 
 public class CommandRunningService(
@@ -11,15 +13,28 @@ public class CommandRunningService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
+			using Activity activity = new Activity("Queue Processing");
+			try
             {
-                RunCommand runCommand = await runQueue.Dequeue(stoppingToken);
-                await processor.ProcessRunCommand(runCommand, cancellationTokenManager.GetCancellationToken());
-            }
+                RunParameters runParameters = await runQueue.Dequeue(stoppingToken);
+				// Start a new activity with the extracted context
+				activity.SetParentId(runParameters.TraceId, runParameters.SpanId, ActivityTraceFlags.Recorded);
+				activity.Start();
+
+				
+				await processor.ProcessRunCommand(runParameters.RunCommand, cancellationTokenManager.GetCancellationToken());
+			}
             catch (Exception e)
             {
                 logger.LogError("failed processing task {error}", e);
             }
+            finally
+            {
+                if (!activity.IsStopped)
+                {
+                    activity.Stop();
+                }
+			}
         }
     }
 

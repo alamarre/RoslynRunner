@@ -17,6 +17,7 @@ builder.Services.AddSingleton<RunCommandProcessor>();
 builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManager>();
 
 builder.Services.AddHostedService<CommandRunningService>();
+builder.AddServiceDefaults();
 
 var app = builder.Build();
 

@@ -9,7 +9,7 @@ public class TestAssemblyLoadContext : AssemblyLoadContext
     private readonly AssemblyDependencyResolver? _resolver;
     private readonly string? _libDirectory;
 
-    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath) : base(isCollectible: false)
+    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath) : base(isCollectible: true)
     {
         if(Directory.Exists(mainAssemblyToLoadPath))
         {
