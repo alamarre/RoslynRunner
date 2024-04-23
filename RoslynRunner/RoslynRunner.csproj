@@ -8,6 +8,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\RoslynRunner.Core\RoslynRunner.Core.csproj" />
+      <ProjectReference Include="..\RoslynRunner.ServiceDefaults\RoslynRunner.ServiceDefaults.csproj" />
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />

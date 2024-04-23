@@ -1,31 +1,46 @@
+using System.Diagnostics;
+
 namespace RoslynRunner;
 
 public class CommandRunningService(
     IRunQueue runQueue, 
     RunCommandProcessor processor,
-    ILogger<CommandRunningService> logger) : BackgroundService
+    ILogger<CommandRunningService> logger,
+    ICancellationTokenManager cancellationTokenManager) : BackgroundService
 {
-    private CancellationTokenSource? _currentCancellationTokenSource;
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            _currentCancellationTokenSource = new CancellationTokenSource();
-            try
+			using Activity activity = new Activity("Queue Processing");
+			try
             {
-                RunCommand runCommand = await runQueue.Dequeue(stoppingToken);
-                await processor.ProcessRunCommand(runCommand, _currentCancellationTokenSource.Token);
-            }
+                RunParameters runParameters = await runQueue.Dequeue(stoppingToken);
+				// Start a new activity with the extracted context
+				activity.SetParentId(runParameters.TraceId, runParameters.SpanId, ActivityTraceFlags.Recorded);
+				activity.Start();
+
+				
+				await processor.ProcessRunCommand(runParameters.RunCommand, cancellationTokenManager.GetCancellationToken());
+			}
             catch (Exception e)
             {
                 logger.LogError("failed processing task {error}", e);
             }
+            finally
+            {
+                if (!activity.IsStopped)
+                {
+                    activity.Stop();
+                }
+			}
         }
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
     {
-        _currentCancellationTokenSource?.Cancel();
+        cancellationTokenManager.CancelCurrentTask();
         return base.StopAsync(cancellationToken);
     }
 }

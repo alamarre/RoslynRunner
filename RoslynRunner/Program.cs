@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Build.Locator;
 using RoslynRunner;
+using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
 
 MSBuildLocator.RegisterDefaults();
@@ -13,8 +14,10 @@ builder.Services.AddSwaggerGen(options => { });
 builder.Services.AddSingleton<IRunQueue, RunQueue>();
 
 builder.Services.AddSingleton<RunCommandProcessor>();
+builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManager>();
 
 builder.Services.AddHostedService<CommandRunningService>();
+builder.AddServiceDefaults();
 
 var app = builder.Build();
 
@@ -37,6 +40,14 @@ app.MapPost("/run", async (
     return Results.Created();
 });
 
+app.MapPost("/assemblies/global", async (
+    [FromBody] LibraryReference reference,
+    CancellationToken cancellationToken) =>
+{
+    await CompilationTools.LoadAssembly(reference.Path, cancellationToken);
+    return Results.Created();
+});
+
 app.MapPost("/analyze", async (
     IRunQueue queue,
     [FromBody] RunCommand<AnalyzerContext> analyzeCommand,
@@ -46,8 +57,15 @@ app.MapPost("/analyze", async (
     return Results.Created();
 });
 
+app.MapDelete("/run", (
+          ICancellationTokenManager cancellationTokenManager) =>
+{
+    cancellationTokenManager.CancelCurrentTask();
+    return Results.Empty;
+});
+
 app.MapGet("/solutions", (RunCommandProcessor runCommandProcessor) =>
-    Results.Ok((object?)runCommandProcessor.GetPeristedSolutions()));
+    Results.Ok((object?)runCommandProcessor.GetPersistedSolutions()));
 
 app.MapDelete("/solutions", (
     [FromBody] List<string> solutionPaths,

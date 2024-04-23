@@ -10,6 +10,7 @@ public record RunCommand(
     string ProcessorName,
     string? ProcessorProjectName,
     string? AssemblyLoadContextPath,
+    List<LibraryReference>? LibraryReferences,
     [property:JsonConverter(typeof(JsonRawStringConverter))]
     string? Context);
 
@@ -18,18 +19,20 @@ public record RunCommand<T>(
     bool PersistSolution,
     string ProcessorName,
     string? AssemblyLoadContextPath,
+    List<LibraryReference>? LibraryReferences,
     T? Context)
 {
 
     public RunCommand ToRunCommand()
     {
         return new RunCommand(
-            PrimarySolution,
-            PersistSolution,
-            null,
-            ProcessorName,
-            null,
-            AssemblyLoadContextPath,
-            JsonSerializer.Serialize(Context));
+            PrimarySolution: PrimarySolution,
+            PersistSolution: PersistSolution,
+            ProcessorSolution: null,
+            ProcessorName: ProcessorName,
+            ProcessorProjectName: null,
+            AssemblyLoadContextPath: AssemblyLoadContextPath,
+            LibraryReferences: LibraryReferences,
+            Context: JsonSerializer.Serialize(value: Context));
     }
 }
