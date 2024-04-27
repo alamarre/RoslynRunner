@@ -44,7 +44,7 @@ app.MapPost("/assemblies/global", async (
     [FromBody] LibraryReference reference,
     CancellationToken cancellationToken) =>
 {
-    await CompilationTools.LoadAssembly(reference.Path, cancellationToken);
+    await CompilationTools.LoadAssembly(reference.Path, cancellationToken, globalContext: true);
     return Results.Created();
 });
 
