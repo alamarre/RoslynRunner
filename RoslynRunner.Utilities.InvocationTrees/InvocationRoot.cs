@@ -13,3 +13,5 @@ public record InvocationMethod(
 	List<InvocationMethod> Implementations,
     Dictionary<IInvocationOperation, InvocationMethod> InvokedMethods
 );
+
+public record TransformedInvocationMethod<T>(T TransformedValue, InvocationMethod InvocationMethod);
