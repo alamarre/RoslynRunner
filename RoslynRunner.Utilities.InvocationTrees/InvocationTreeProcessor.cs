@@ -6,12 +6,13 @@ using RoslynRunner.Core.QueueProcessing;
 using System.Linq;
 using System.Text.Json;
 using System.Linq.Dynamic.Core;
+using Microsoft.Extensions.Logging;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
 public class InvocationTreeProcessor : ISolutionProcessor
 {
-    public async Task ProcessSolution(Solution solution, string? context, CancellationToken cancellationToken)
+    public async Task ProcessSolution(Solution solution, string? context, ILogger logger, CancellationToken cancellationToken)
     {
         if (context == null)
         {
