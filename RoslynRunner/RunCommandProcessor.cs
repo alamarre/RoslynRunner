@@ -105,7 +105,7 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
 			throw new Exception("no processor found");
         }
 
-        await processor.ProcessSolution(solution, runCommand.Context, cancellationToken);
+        await processor.ProcessSolution(solution, runCommand.Context, loggerFactory.CreateLogger(processor.GetType().Name),  cancellationToken);
         logger.LogInformation("run command processed");
 		loadContext?.Unload();
 	}

@@ -12,7 +12,7 @@ namespace RoslynRunner.SolutionProcessors;
 public record AnalyzerContext(string AnalyzerProject, string TargetProject, List<string> AnalyzerNames);
 public class AnalyzerRunner : ISolutionProcessor
 {
-    public async Task ProcessSolution(Solution solution, string? context, CancellationToken cancellationToken)
+    public async Task ProcessSolution(Solution solution, string? context, ILogger logger, CancellationToken cancellationToken)
     {
         if (context == null)
         {
