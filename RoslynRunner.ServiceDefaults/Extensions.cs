@@ -49,10 +49,8 @@ public static class Extensions
             .WithTracing(tracing =>
             {
                 if (builder.Environment.IsDevelopment())
-                {
                     // We want to view all traces in development
                     tracing.SetSampler(new AlwaysOnSampler());
-                }
 
                 tracing.AddAspNetCoreInstrumentation()
                     // Uncomment the following line to enable gRPC instrumentation (requires the OpenTelemetry.Instrumentation.GrpcNetClient package)
@@ -109,10 +107,7 @@ public static class Extensions
             app.MapHealthChecks("/health");
 
             // Only health checks tagged with the "live" tag must pass for app to be considered alive
-            app.MapHealthChecks("/alive", new HealthCheckOptions
-            {
-                Predicate = r => r.Tags.Contains("live")
-            });
+            app.MapHealthChecks("/alive", new HealthCheckOptions { Predicate = r => r.Tags.Contains("live") });
 
             // Uncomment the following line to enable the Prometheus endpoint (requires the OpenTelemetry.Exporter.Prometheus.AspNetCore package)
             // app.MapPrometheusScrapingEndpoint();

@@ -9,39 +9,25 @@ public class TestAssemblyLoadContext : AssemblyLoadContext
     private readonly AssemblyDependencyResolver? _resolver;
     private readonly string? _libDirectory;
 
-    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath) : base(isCollectible: true)
+    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath) : base(true)
     {
-        if(Directory.Exists(mainAssemblyToLoadPath))
-        {
-			_libDirectory = mainAssemblyToLoadPath;
-		} else if (mainAssemblyToLoadPath != null)
-        {
-            _resolver = new AssemblyDependencyResolver(mainAssemblyToLoadPath);
-        }
+        if (Directory.Exists(mainAssemblyToLoadPath))
+            _libDirectory = mainAssemblyToLoadPath;
+        else if (mainAssemblyToLoadPath != null) _resolver = new AssemblyDependencyResolver(mainAssemblyToLoadPath);
     }
 
     protected override Assembly? Load(AssemblyName name)
     {
-        if(AssemblyLoadContext.Default.Assemblies.Any(a => a.GetName().Name == name.Name)) { 
-            return null; 
-        }
+        if (Default.Assemblies.Any(a => a.GetName().Name == name.Name)) return null;
         if (_libDirectory != null)
         {
-			string? path = Path.Combine(_libDirectory, name.Name + ".dll");
-			if (File.Exists(path))
-            {
-				return LoadFromAssemblyPath(path);
-			}
-		}
-        if (_resolver == null)
-        {
-            return null;
+            var path = Path.Combine(_libDirectory, name.Name + ".dll");
+            if (File.Exists(path)) return LoadFromAssemblyPath(path);
         }
-        string? assemblyPath = _resolver.ResolveAssemblyToPath(name);
-        if (assemblyPath != null)
-        {
-            return LoadFromAssemblyPath(assemblyPath);
-        }
+
+        if (_resolver == null) return null;
+        var assemblyPath = _resolver.ResolveAssemblyToPath(name);
+        if (assemblyPath != null) return LoadFromAssemblyPath(assemblyPath);
 
         return null;
     }

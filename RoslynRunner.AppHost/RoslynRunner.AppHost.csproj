@@ -14,7 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
+        <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj"/>
     </ItemGroup>
 
 </Project>

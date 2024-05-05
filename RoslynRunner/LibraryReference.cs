@@ -2,4 +2,4 @@
 
 public record LibraryReference(
     string Path
-    );
+);

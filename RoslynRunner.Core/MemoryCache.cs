@@ -8,5 +8,5 @@ namespace RoslynRunner.Core;
 
 public static class MemoryCache
 {
-	public static Dictionary<object, object> Cache = new Dictionary<object, object>();
+    public static Dictionary<object, object> Cache = new();
 }

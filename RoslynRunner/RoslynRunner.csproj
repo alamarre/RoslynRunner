@@ -7,11 +7,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\RoslynRunner.Core\RoslynRunner.Core.csproj" />
-      <ProjectReference Include="..\RoslynRunner.ServiceDefaults\RoslynRunner.ServiceDefaults.csproj" />
+        <ProjectReference Include="..\RoslynRunner.Core\RoslynRunner.Core.csproj"/>
+        <ProjectReference Include="..\RoslynRunner.ServiceDefaults\RoslynRunner.ServiceDefaults.csproj"/>
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
-        <PackageReference Include="Microsoft.Build.Locator" Version="1.6.10" />
-    </ItemGroup>    
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0"/>
+        <PackageReference Include="Microsoft.Build.Locator" Version="1.6.10"/>
+    </ItemGroup>
 </Project>

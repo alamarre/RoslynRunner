@@ -9,7 +9,9 @@ MSBuildLocator.RegisterDefaults();
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options => { });
+builder.Services.AddSwaggerGen(options =>
+{
+});
 
 builder.Services.AddSingleton<IRunQueue, RunQueue>();
 
@@ -58,7 +60,7 @@ app.MapPost("/analyze", async (
 });
 
 app.MapDelete("/run", (
-          ICancellationTokenManager cancellationTokenManager) =>
+    ICancellationTokenManager cancellationTokenManager) =>
 {
     cancellationTokenManager.CancelCurrentTask();
     return Results.Empty;
@@ -71,13 +73,9 @@ app.MapDelete("/solutions", (
     [FromBody] List<string> solutionPaths,
     RunCommandProcessor runCommandProcessor) =>
 {
-    foreach (var solution in solutionPaths)
-    {
-        runCommandProcessor.RemovePersistedSolution(solution);
-    }
+    foreach (var solution in solutionPaths) runCommandProcessor.RemovePersistedSolution(solution);
 
     return Results.Empty;
 });
 
 await app.RunAsync();
-

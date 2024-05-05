@@ -15,11 +15,11 @@ public interface IRunQueue
 public class RunQueue : IRunQueue
 {
     private readonly Channel<RunParameters> _channel = Channel.CreateUnbounded<RunParameters>();
-    
+
     public async Task Enqueue(RunCommand runCommand, CancellationToken cancellationToken = default)
     {
-		using var activity = Activity.Current;
-		var parameters = new RunParameters(runCommand, activity!.TraceId, activity!.SpanId);
+        using var activity = Activity.Current;
+        var parameters = new RunParameters(runCommand, activity!.TraceId, activity!.SpanId);
         await _channel.Writer.WriteAsync(parameters, cancellationToken);
     }
 
@@ -27,6 +27,6 @@ public class RunQueue : IRunQueue
     {
         var parameters = await _channel.Reader.ReadAsync(cancellationToken);
 
-		return parameters;
+        return parameters;
     }
 }

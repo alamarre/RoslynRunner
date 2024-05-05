@@ -11,5 +11,3 @@ public interface ISolutionProcessor<T>
 public interface ISolutionProcessor : ISolutionProcessor<string>
 {
 }
-
-
