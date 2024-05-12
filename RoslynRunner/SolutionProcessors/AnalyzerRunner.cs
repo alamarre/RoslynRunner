@@ -36,6 +36,7 @@ public class AnalyzerRunner : ISolutionProcessor
             .Where(a => a != null).ToList();
         var diagnosticAnalyzers = analyzers.Where(a => a is DiagnosticAnalyzer).Cast<DiagnosticAnalyzer>().ToList();
 
+        logger.LogInformation($"analyzers found {analyzers.Count}");
         var targetProject = solution.Projects.FirstOrDefault(p => p.Name == analyzerContext.TargetProject);
         var projectCompilation = await targetProject!.GetCompilationAsync(cancellationToken);
         if (diagnosticAnalyzers.Any())

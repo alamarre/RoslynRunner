@@ -80,13 +80,17 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
                         }
                     }
             }
-            else
-            {
-                if (runCommand.ProcessorName == nameof(AnalyzerRunner)) processor = new AnalyzerRunner();
-            }
+            
+        }
+        else if (runCommand.ProcessorName == nameof(AnalyzerRunner)) 
+        {
+            processor = new AnalyzerRunner();
         }
 
-        if (processor == null) throw new Exception("no processor found");
+        if (processor == null)
+        {
+            throw new Exception("no processor found");
+        }
 
         await processor.ProcessSolution(solution, runCommand.Context,
             loggerFactory.CreateLogger(processor.GetType().Name), cancellationToken);

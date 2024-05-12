@@ -11,7 +11,11 @@
         <ProjectReference Include="..\RoslynRunner.ServiceDefaults\RoslynRunner.ServiceDefaults.csproj"/>
     </ItemGroup>
     <ItemGroup>
+        <PackageReference Include="MudBlazor" Version="6.19.1" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0"/>
         <PackageReference Include="Microsoft.Build.Locator" Version="1.6.10"/>
+    </ItemGroup>
+    <ItemGroup>
+      <Folder Include="UI\Components\" />
     </ItemGroup>
 </Project>

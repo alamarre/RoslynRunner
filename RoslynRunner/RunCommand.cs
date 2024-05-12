@@ -10,17 +10,17 @@ public record RunCommand(
     string ProcessorName,
     string? ProcessorProjectName,
     string? AssemblyLoadContextPath,
-    List<LibraryReference>? LibraryReferences,
+    List<LibraryReference>? LibraryReferences = null,
     [property: JsonConverter(typeof(JsonRawStringConverter))]
-    string? Context);
+    string? Context = null);
 
 public record RunCommand<T>(
     string PrimarySolution,
     bool PersistSolution,
     string ProcessorName,
     string? AssemblyLoadContextPath,
-    List<LibraryReference>? LibraryReferences,
-    T? Context)
+    List<LibraryReference>? LibraryReferences = null,
+    T? Context = default)
 {
     public RunCommand ToRunCommand()
     {
