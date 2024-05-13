@@ -50,7 +50,9 @@ public static class Extensions
             {
                 if (builder.Environment.IsDevelopment())
                     // We want to view all traces in development
+                {
                     tracing.SetSampler(new AlwaysOnSampler());
+                }
 
                 tracing.AddAspNetCoreInstrumentation()
                     // Uncomment the following line to enable gRPC instrumentation (requires the OpenTelemetry.Instrumentation.GrpcNetClient package)

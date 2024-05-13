@@ -15,8 +15,8 @@
                     <option>Custom Processor</option>
                 </select>
             </MudItem>
-            
-            
+
+
             <MudItem>
                 <MudTextField @bind-Value="primarySolution" Label="Primary Solution" Variant="Variant.Outlined"/>
             </MudItem>
@@ -35,7 +35,7 @@
                     <MudTextField @bind-Value="targetProject" Label="Target Project Name" Variant="Variant.Outlined"/>
                 </MudItem>
                 <MudItem>
-                        <MudTextField @bind-Value="analyzerNames" Label="Analyzer Names" Variant="Variant.Outlined"/>
+                    <MudTextField @bind-Value="analyzerNames" Label="Analyzer Names" Variant="Variant.Outlined"/>
                 </MudItem>
             }
             else if (commandType == "Custom Processor")
@@ -49,7 +49,7 @@
                 <MudItem>
                     <MudTextField @bind-Value="processorProjectName" Label="Processor Project Name" Variant="Variant.Outlined"/>
                 </MudItem>
-                
+
                 <MudItem>
                     <MudTextField Lines="3" @bind-Value="contextText" Label="Context (JSON)" Variant="Variant.Outlined" Multiline="true"/>
                     @if (contextError != null)
@@ -68,12 +68,12 @@
                 <MudButton OnClick="CopyToClipboard" Variant="Variant.Filled">Copy to Clipboard</MudButton>
             </MudItem>
             <MudItem>
-                <MudTextField Lines="6" @bind-Value="loadJsonText" Label="Load JSON" Variant="Variant.Outlined" Multiline="true" />
+                <MudTextField Lines="6" @bind-Value="loadJsonText" Label="Load JSON" Variant="Variant.Outlined" Multiline="true"/>
                 <MudButton OnClick="LoadFromJson" Variant="Variant.Filled">Load</MudButton>
             </MudItem>
         </MudTabPanel>
     </MudTabs>
-    </MudContainer>
+</MudContainer>
 
 @code {
     private string commandType = "Analyzer";
@@ -90,7 +90,7 @@
     private string? contextError = null;
     private string currentRunCommandJson = string.Empty;
     private string loadJsonText = string.Empty;
-    
+
     private async Task CopyToClipboard()
     {
         await runtime.InvokeVoidAsync("copyTextToClipboard", currentRunCommandJson);
@@ -114,29 +114,29 @@
             {
                 AnalyzerProject = analyzerProject,
                 TargetProject = targetProject,
-                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()) ?? new string []{}
+                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()) ?? new string[] { }
             };
-            string serializedContext = JsonSerializer.Serialize(analyzerContext);
+            var serializedContext = JsonSerializer.Serialize(analyzerContext);
 
             runCommand = new RunCommand(
-                PrimarySolution: primarySolution,
-                PersistSolution: persistSolution,
-                ProcessorSolution: null,
-                ProcessorName: "AnalyzerRunner",
-                ProcessorProjectName: null,
-                AssemblyLoadContextPath: assemblyLoadContextPath,
+                primarySolution,
+                persistSolution,
+                null,
+                "AnalyzerRunner",
+                null,
+                assemblyLoadContextPath,
                 Context: serializedContext
             );
         }
         else
         {
             runCommand = new RunCommand(
-                PrimarySolution: primarySolution,
-                PersistSolution: persistSolution,
-                ProcessorSolution: processorSolution,
-                ProcessorName: processorName,
-                ProcessorProjectName: processorProjectName,
-                AssemblyLoadContextPath: assemblyLoadContextPath,
+                primarySolution,
+                persistSolution,
+                processorSolution,
+                processorName,
+                processorProjectName,
+                assemblyLoadContextPath,
                 Context: contextText
             );
         }
@@ -148,7 +148,7 @@
     {
         try
         {
-            JsonSerializerOptions options = new JsonSerializerOptions
+            var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             };
@@ -193,6 +193,7 @@
         {
             contextError = "Invalid JSON input for loading.";
         }
+
         StateHasChanged();
     }
 
@@ -201,4 +202,5 @@
         var runCommand = GetRunCommand();
         await runQueue.Enqueue(runCommand);
     }
+
 }

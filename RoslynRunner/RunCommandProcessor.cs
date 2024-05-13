@@ -33,7 +33,10 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         {
             var workspace = MSBuildWorkspace.Create();
             solution = await CompilationTools.GetSolution(workspace, runCommand.PrimarySolution, logger);
-            if (runCommand.PersistSolution) _persistentSolutions.Add(runCommand.PrimarySolution, solution);
+            if (runCommand.PersistSolution)
+            {
+                _persistentSolutions.Add(runCommand.PrimarySolution, solution);
+            }
         }
 
         ISolutionProcessor? processor = null;
@@ -47,15 +50,24 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
                 await CompilationTools.GetSolution(processorWorkspace, runCommand.ProcessorSolution, null);
             var project =
                 processorSolution.Projects.FirstOrDefault(p => p.Name == runCommand.ProcessorProjectName);
-            if (project == null) throw new Exception("project does not exist");
+            if (project == null)
+            {
+                throw new Exception("project does not exist");
+            }
 
             var compilation = await project.GetCompilationAsync(cancellationToken);
 
-            if (compilation == null) throw new Exception();
+            if (compilation == null)
+            {
+                throw new Exception();
+            }
 
             loadContext = new TestAssemblyLoadContext(runCommand.AssemblyLoadContextPath);
             var assembly = CompilationTools.GetAssembly(compilation, loadContext);
-            if (assembly == null) throw new Exception();
+            if (assembly == null)
+            {
+                throw new Exception();
+            }
 
             var instance = assembly.CreateInstance(runCommand.ProcessorName);
             processor = instance as ISolutionProcessor;
@@ -63,6 +75,7 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
             {
                 var type = instance.GetType();
                 foreach (var interfaceType in type.GetInterfaces())
+                {
                     if (interfaceType.IsGenericType &&
                         interfaceType.GetGenericTypeDefinition() == typeof(ISolutionProcessor<>))
                     {
@@ -79,10 +92,10 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
                             return;
                         }
                     }
+                }
             }
-            
         }
-        else if (runCommand.ProcessorName == nameof(AnalyzerRunner)) 
+        else if (runCommand.ProcessorName == nameof(AnalyzerRunner))
         {
             processor = new AnalyzerRunner();
         }

@@ -21,7 +21,11 @@ public class InvocationTreeDotGraphWriter
         foreach (var type in methods.GroupBy(m => m.MethodSymbol.ContainingType, SymbolEqualityComparer.Default))
         {
             var typeNode = new DotNode().WithIdentifier(type.Key!.Name);
-            if (type.Any(m => endpoints.Contains(m))) typeNode.WithColor("red");
+            if (type.Any(m => endpoints.Contains(m)))
+            {
+                typeNode.WithColor("red");
+            }
+
             graph.Elements.Add(typeNode);
             written.Add(type.Key, typeNode);
         }
@@ -38,7 +42,10 @@ public class InvocationTreeDotGraphWriter
             if (methodNode.Color?.Value != "red" &&
                 method.MethodSymbol.ContainingType.AllInterfaces.Any(i =>
                     i.Equals(caller.MethodSymbol.ContainingType, SymbolEqualityComparer.Default)))
+            {
                 methodNode.WithColor("blue");
+            }
+
             graph.Elements.Add(edge);
         }
 

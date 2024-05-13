@@ -19,11 +19,23 @@ public static class InvocationTreeBuilder
         Dictionary<IMethodSymbol, InvocationMethod> methodCache = new(SymbolEqualityComparer.Default);
         foreach (var location in startingType.Locations)
         {
-            if (!location.IsInSource) continue;
+            if (!location.IsInSource)
+            {
+                continue;
+            }
+
             var node = await location.GetSyntaxNodeAsync(cancellationToken);
-            if (node == null) continue;
+            if (node == null)
+            {
+                continue;
+            }
+
             var rootModel = await solution.GetModel(node, cancellationToken);
-            if (rootModel == null) continue;
+            if (rootModel == null)
+            {
+                continue;
+            }
+
             var methodNodes = node.DescendantNodes().OfType<MethodDeclarationSyntax>();
             var methodSymbols = methodNodes.Select(m => rootModel.GetDeclaredSymbol(m, cancellationToken))
                 .Cast<IMethodSymbol>();
@@ -38,7 +50,9 @@ public static class InvocationTreeBuilder
                     var methodSymbol = method.MethodSymbol;
                     if (await methodSymbol.Locations.First().GetSyntaxNodeAsync(cancellationToken)
                         is not MethodDeclarationSyntax currentMethodNode)
+                    {
                         return newMethods;
+                    }
 
 
                     // TODO: make this conditional
@@ -51,10 +65,14 @@ public static class InvocationTreeBuilder
                         (await SymbolFinder.FindImplementationsAsync(methodSymbol, solution,
                             cancellationToken: cancellationToken)).ToArray();
                     if (implementations.Any() && implementations.Length < 6)
+                    {
                         foreach (var implementation in implementations)
                         {
                             var implementationSymbol = implementation as IMethodSymbol;
-                            if (implementationSymbol == null) continue;
+                            if (implementationSymbol == null)
+                            {
+                                continue;
+                            }
 
                             if (!methodCache.TryGetValue(implementationSymbol, out var invocationMethod))
                             {
@@ -72,13 +90,25 @@ public static class InvocationTreeBuilder
 
                             method.Implementations.Add(invocationMethod);
                         }
+                    }
 
                     SyntaxNode? methodBodyNode = currentMethodNode.Body;
-                    if (methodBodyNode == null) methodBodyNode = currentMethodNode.ExpressionBody?.Expression;
+                    if (methodBodyNode == null)
+                    {
+                        methodBodyNode = currentMethodNode.ExpressionBody?.Expression;
+                    }
 
-                    if (methodBodyNode == null) return newMethods;
+                    if (methodBodyNode == null)
+                    {
+                        return newMethods;
+                    }
+
                     var model = await solution.GetModel(methodBodyNode, cancellationToken);
-                    if (model == null) return newMethods;
+                    if (model == null)
+                    {
+                        return newMethods;
+                    }
+
                     var methodOperation = model.GetOperation(methodBodyNode, cancellationToken);
                     var operations = methodOperation.Descendants().OfType<IInvocationOperation>();
                     Dictionary<IInvocationOperation, InvocationMethod> invocationMethods = new();
@@ -134,7 +164,11 @@ public static class InvocationTreeBuilder
         var rootMethods = methodSymbols.Select(m =>
             {
                 var transformed = transformer(m, null, null);
-                if (transformed == null) return null;
+                if (transformed == null)
+                {
+                    return null;
+                }
+
                 return new TransformedInvocationMethod<T>(transformed,
                     new InvocationMethod(m!,
                         new List<InvocationMethod>(),
@@ -156,14 +190,21 @@ public static class InvocationTreeBuilder
                     var implementedInterfacMethods = methodSymbol.FindImplementedInterfaceMethods();
                     foreach (var interfaceMethod in implementedInterfacMethods)
                     {
-                        if (interfaceMethod == null) continue;
+                        if (interfaceMethod == null)
+                        {
+                            continue;
+                        }
 
 
                         if (!methodCache.TryGetValue(interfaceMethod,
                                 out TransformedInvocationMethod<T>? interfaceTransformedInvocation))
                         {
                             var interfaceTransformed = interfaceTransformer(interfaceMethod, method);
-                            if (interfaceTransformed == null) continue;
+                            if (interfaceTransformed == null)
+                            {
+                                continue;
+                            }
+
                             interfaceTransformedInvocation = new TransformedInvocationMethod<T>(
                                 interfaceTransformed,
                                 new InvocationMethod(interfaceMethod,
@@ -185,28 +226,59 @@ public static class InvocationTreeBuilder
                 var callers = (await CachingSymbolFinder.FindCallersAsync(methodSymbol, solution, cancellationToken))
                     .ToArray();
                 if (callers.Any())
+                {
                     foreach (var caller in callers)
                     foreach (var location in caller.Locations.Where(l => l.IsInSource
                                                                          && !l.SourceTree.FilePath.EndsWith(
                                                                              ".generated.cs")
                              ))
                     {
-                        if (!location.IsInSource) continue;
+                        if (!location.IsInSource)
+                        {
+                            continue;
+                        }
+
                         var node = await location.GetSyntaxNodeAsync(cancellationToken);
-                        if (node == null) continue;
+                        if (node == null)
+                        {
+                            continue;
+                        }
+
                         SyntaxNode? currentMethodNode = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
                         if (currentMethodNode == null)
+                        {
                             currentMethodNode = node.FirstAncestorOrSelf<ConstructorDeclarationSyntax>();
-                        if (currentMethodNode == null) continue;
+                        }
+
+                        if (currentMethodNode == null)
+                        {
+                            continue;
+                        }
+
                         var callerModel = await solution.GetModel(currentMethodNode, cancellationToken);
-                        if (callerModel == null) continue;
+                        if (callerModel == null)
+                        {
+                            continue;
+                        }
+
                         var callerMethodSymbol = callerModel.GetDeclaredSymbol(currentMethodNode, cancellationToken);
-                        if (callerMethodSymbol is not IMethodSymbol implementationSymbol) continue;
+                        if (callerMethodSymbol is not IMethodSymbol implementationSymbol)
+                        {
+                            continue;
+                        }
+
                         var invocationNode = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
-                        if (invocationNode == null) continue;
+                        if (invocationNode == null)
+                        {
+                            continue;
+                        }
+
                         var operation =
                             callerModel!.GetOperation(invocationNode!, cancellationToken) as IInvocationOperation;
-                        if (operation == null) continue;
+                        if (operation == null)
+                        {
+                            continue;
+                        }
 
                         if (!methodCache.TryGetValue(implementationSymbol,
                                 out TransformedInvocationMethod<T>? transformedMethod))
@@ -221,7 +293,11 @@ public static class InvocationTreeBuilder
                                 }
                             );
                             var transformed = transformer(implementationSymbol, operation, method);
-                            if (transformed == null) continue;
+                            if (transformed == null)
+                            {
+                                continue;
+                            }
+
                             transformedMethod = new TransformedInvocationMethod<T>(transformed, invocationMethod);
                             methodCache.Add(implementationSymbol, transformedMethod);
                             newMethods.Add(transformedMethod);
@@ -233,6 +309,7 @@ public static class InvocationTreeBuilder
 
                         method.InvocationMethod.Callers.Add(transformedMethod.InvocationMethod);
                     }
+                }
 
                 return newMethods;
             }, 1000 * 100, logger, rootMethods);

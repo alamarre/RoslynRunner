@@ -15,9 +15,16 @@ public class InvocationTreeProcessor : ISolutionProcessor
     public async Task ProcessSolution(Solution solution, string? context, ILogger logger,
         CancellationToken cancellationToken)
     {
-        if (context == null) throw new ArgumentException("context must be an InvocationTreeProcessorParameters");
+        if (context == null)
+        {
+            throw new ArgumentException("context must be an InvocationTreeProcessorParameters");
+        }
+
         var parameters = JsonSerializer.Deserialize<InvocationTreeProcessorParameters>(context);
-        if (parameters == null) throw new Exception("context must be an InvocationTreeProcessorParameters");
+        if (parameters == null)
+        {
+            throw new Exception("context must be an InvocationTreeProcessorParameters");
+        }
 
         var symbol = await FindSymbol(solution, parameters.StartingSymbol,
             cancellationToken);
@@ -25,7 +32,9 @@ public class InvocationTreeProcessor : ISolutionProcessor
         var (results, allMethods) =
             await InvocationTreeBuilder.BuildInvocationTreeAsync((INamedTypeSymbol)symbol, solution, cancellationToken);
         if (parameters.Diagrams != null)
+        {
             foreach (var diagram in parameters.Diagrams)
+            {
                 if (diagram.Filter != null)
                 {
                     var filteredMethods = allMethods
@@ -60,6 +69,8 @@ public class InvocationTreeProcessor : ISolutionProcessor
                     var result = InvocationTreeMermaidWriter.GetMermaidDag(allMethods.ToList());
                     File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + ".md", result);
                 }
+            }
+        }
     }
 
     public static async Task<ISymbol?> FindSymbol(Solution solution, string fullyQualified,

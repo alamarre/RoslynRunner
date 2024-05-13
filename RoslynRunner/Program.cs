@@ -82,7 +82,10 @@ app.MapDelete("/solutions", (
     [FromBody] List<string> solutionPaths,
     RunCommandProcessor runCommandProcessor) =>
 {
-    foreach (var solution in solutionPaths) runCommandProcessor.RemovePersistedSolution(solution);
+    foreach (var solution in solutionPaths)
+    {
+        runCommandProcessor.RemovePersistedSolution(solution);
+    }
 
     return Results.Empty;
 });
