@@ -13,7 +13,11 @@ public class CancellationTokenManager : ICancellationTokenManager
 
     public void CancelCurrentTask()
     {
-        if (_currentCancellationTokenSource == null) return;
+        if (_currentCancellationTokenSource == null)
+        {
+            return;
+        }
+
         _currentCancellationTokenSource.Cancel();
         _currentCancellationTokenSource = null;
     }
@@ -21,7 +25,11 @@ public class CancellationTokenManager : ICancellationTokenManager
     public CancellationToken GetCancellationToken()
     {
         // we're going to just recycle the token until it's cancelled
-        if (_currentCancellationTokenSource == null) _currentCancellationTokenSource = new CancellationTokenSource();
+        if (_currentCancellationTokenSource == null)
+        {
+            _currentCancellationTokenSource = new CancellationTokenSource();
+        }
+
         return _currentCancellationTokenSource!.Token;
     }
 }

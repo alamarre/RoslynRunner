@@ -12,9 +12,13 @@ public static class GitTools
             var diff = repo.Diff.Compare<Patch>();
             repo.Reset(ResetMode.Hard);
             if (string.IsNullOrWhiteSpace(patchFile))
+            {
                 Console.WriteLine(diff.Content);
+            }
             else
+            {
                 File.WriteAllText(patchFile, diff.Content);
+            }
         }
     }
 
@@ -22,7 +26,10 @@ public static class GitTools
     {
         using (var repo = new Repository(repoPath))
         {
-            if (repo.Branches.Any(b => b.FriendlyName == newBranch)) repo.Branches.Remove(newBranch);
+            if (repo.Branches.Any(b => b.FriendlyName == newBranch))
+            {
+                repo.Branches.Remove(newBranch);
+            }
 
             var branch = repo.CreateBranch(newBranch, repo.Branches[baseBranch].Tip);
             Commands.Checkout(repo, branch);
@@ -64,13 +71,22 @@ public static class GitTools
         if (repo.Diff.Compare<TreeChanges>().Count > 0)
         {
             if (prompt)
+            {
                 while (true)
                 {
                     Console.WriteLine("There are uncommited changes, abort? (y/n)");
                     var response = Console.ReadLine();
-                    if (response == "y") return true;
-                    if (response == "n") return false;
+                    if (response == "y")
+                    {
+                        return true;
+                    }
+
+                    if (response == "n")
+                    {
+                        return false;
+                    }
                 }
+            }
 
             return true;
         }

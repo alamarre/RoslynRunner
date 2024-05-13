@@ -1,12 +1,19 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Build.Locator;
+using MudBlazor.Services;
 using RoslynRunner;
 using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
+using RoslynRunner.UI;
 
 MSBuildLocator.RegisterDefaults();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+builder.Services.AddMudServices();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -22,6 +29,10 @@ builder.Services.AddHostedService<CommandRunningService>();
 builder.AddServiceDefaults();
 
 var app = builder.Build();
+app.UseRouting();
+
+app.UseStaticFiles();
+app.UseAntiforgery();
 
 //if( app.Environment.IsDevelopment() ) {
 app.UseSwagger();
@@ -30,8 +41,6 @@ app.UseSwaggerUI(options =>
     options.EnablePersistAuthorization();
 });
 //}
-
-app.MapGet("/", () => "Hello World!");
 
 app.MapPost("/run", async (
     IRunQueue queue,
@@ -73,9 +82,15 @@ app.MapDelete("/solutions", (
     [FromBody] List<string> solutionPaths,
     RunCommandProcessor runCommandProcessor) =>
 {
-    foreach (var solution in solutionPaths) runCommandProcessor.RemovePersistedSolution(solution);
+    foreach (var solution in solutionPaths)
+    {
+        runCommandProcessor.RemovePersistedSolution(solution);
+    }
 
     return Results.Empty;
 });
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
 await app.RunAsync();

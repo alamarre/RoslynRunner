@@ -1,0 +1,206 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IRunQueue runQueue
+@inject ICancellationTokenManager cancellationTokenManager
+@using System.Text.Json
+@inject IJSRuntime runtime
+
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="Run">
+            <MudItem>
+                <label for="commandType">Command Type:</label>
+                <select name="commandType" @bind="commandType">
+                    <option>Analyzer</option>
+                    <option>Custom Processor</option>
+                </select>
+            </MudItem>
+
+
+            <MudItem>
+                <MudTextField @bind-Value="primarySolution" Label="Primary Solution" Variant="Variant.Outlined"/>
+            </MudItem>
+            <MudItem>
+                <MudCheckBox @bind-Value="persistSolution" Label="Persist Solution"/>
+            </MudItem>
+            <MudItem>
+                <MudTextField @bind-Value="assemblyLoadContextPath" Label="Assembly Load Context Path" Variant="Variant.Outlined"/>
+            </MudItem>
+            @if (commandType == "Analyzer")
+            {
+                <MudItem>
+                    <MudTextField @bind-Value="analyzerProject" Label="Analyzer Project Path" Variant="Variant.Outlined"/>
+                </MudItem>
+                <MudItem>
+                    <MudTextField @bind-Value="targetProject" Label="Target Project Name" Variant="Variant.Outlined"/>
+                </MudItem>
+                <MudItem>
+                    <MudTextField @bind-Value="analyzerNames" Label="Analyzer Names" Variant="Variant.Outlined"/>
+                </MudItem>
+            }
+            else if (commandType == "Custom Processor")
+            {
+                <MudItem>
+                    <MudTextField @bind-Value="processorSolution" Label="Processor Solution" Variant="Variant.Outlined"/>
+                </MudItem>
+                <MudItem>
+                    <MudTextField @bind-Value="processorName" Label="Processor Name" Variant="Variant.Outlined"/>
+                </MudItem>
+                <MudItem>
+                    <MudTextField @bind-Value="processorProjectName" Label="Processor Project Name" Variant="Variant.Outlined"/>
+                </MudItem>
+
+                <MudItem>
+                    <MudTextField Lines="3" @bind-Value="contextText" Label="Context (JSON)" Variant="Variant.Outlined" Multiline="true"/>
+                    @if (contextError != null)
+                    {
+                        <MudAlert Severity="Severity.Error">@contextError</MudAlert>
+                    }
+                </MudItem>
+            }
+            <MudItem>
+                <MudButton OnClick="SubmitForm" Color="Color.Primary">Submit</MudButton>
+            </MudItem>
+        </MudTabPanel>
+        <MudTabPanel OnClick="UpdateCommandText" Text="JSON">
+            <MudItem>
+                <MudTextField Lines="6" Value="@currentRunCommandJson" Label="Current Run Command JSON" ReadOnly="true" Variant="Variant.Outlined" Multiline="true"/>
+                <MudButton OnClick="CopyToClipboard" Variant="Variant.Filled">Copy to Clipboard</MudButton>
+            </MudItem>
+            <MudItem>
+                <MudTextField Lines="6" @bind-Value="loadJsonText" Label="Load JSON" Variant="Variant.Outlined" Multiline="true"/>
+                <MudButton OnClick="LoadFromJson" Variant="Variant.Filled">Load</MudButton>
+            </MudItem>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private string commandType = "Analyzer";
+    private string primarySolution = string.Empty;
+    public bool persistSolution = false;
+    private string? processorSolution = null;
+    private string processorName = string.Empty;
+    private string? processorProjectName = null;
+    private string? assemblyLoadContextPath = null;
+    private string analyzerProject = string.Empty;
+    private string targetProject = string.Empty;
+    private string analyzerNames = string.Empty;
+    private string? contextText = null;
+    private string? contextError = null;
+    private string currentRunCommandJson = string.Empty;
+    private string loadJsonText = string.Empty;
+
+    private async Task CopyToClipboard()
+    {
+        await runtime.InvokeVoidAsync("copyTextToClipboard", currentRunCommandJson);
+    }
+
+    private void UpdateCommandText()
+    {
+        var runCommand = GetRunCommand();
+
+        currentRunCommandJson = JsonSerializer.Serialize(runCommand, new JsonSerializerOptions { WriteIndented = true });
+        StateHasChanged();
+    }
+
+    private RunCommand GetRunCommand()
+    {
+        RunCommand runCommand;
+
+        if (commandType == "Analyzer")
+        {
+            var analyzerContext = new
+            {
+                AnalyzerProject = analyzerProject,
+                TargetProject = targetProject,
+                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()) ?? new string[] { }
+            };
+            var serializedContext = JsonSerializer.Serialize(analyzerContext);
+
+            runCommand = new RunCommand(
+                primarySolution,
+                persistSolution,
+                null,
+                "AnalyzerRunner",
+                null,
+                assemblyLoadContextPath,
+                Context: serializedContext
+            );
+        }
+        else
+        {
+            runCommand = new RunCommand(
+                primarySolution,
+                persistSolution,
+                processorSolution,
+                processorName,
+                processorProjectName,
+                assemblyLoadContextPath,
+                Context: contextText
+            );
+        }
+
+        return runCommand;
+    }
+
+    private void LoadFromJson()
+    {
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var loadedCommand = JsonSerializer.Deserialize<RunCommand>(loadJsonText, options);
+
+            if (loadedCommand is not null)
+            {
+                primarySolution = loadedCommand.PrimarySolution;
+                persistSolution = loadedCommand.PersistSolution;
+                processorSolution = loadedCommand.ProcessorSolution;
+                processorName = loadedCommand.ProcessorName;
+                processorProjectName = loadedCommand.ProcessorProjectName;
+                assemblyLoadContextPath = loadedCommand.AssemblyLoadContextPath;
+                contextText = loadedCommand.Context;
+
+                // Update specific fields based on command type
+                if (processorName == "AnalyzerRunner")
+                {
+                    commandType = "Analyzer";
+                    var analyzerContext = JsonSerializer.Deserialize<Dictionary<string, object>>(loadedCommand.Context ?? "{}");
+                    analyzerProject = analyzerContext?["AnalyzerProject"]?.ToString() ?? string.Empty;
+                    targetProject = analyzerContext?["TargetProject"]?.ToString() ?? string.Empty;
+
+                    var names = analyzerContext?["AnalyzerNames"] as JsonElement?;
+                    // convert to array
+                    var fullNames = names?.EnumerateArray().ToArray();
+                    if (fullNames != null)
+                    {
+                        analyzerNames = string.Join(",", fullNames);
+                    }
+                }
+                else
+                {
+                    commandType = "Custom Processor";
+                }
+
+                contextError = null;
+                UpdateCommandText();
+            }
+        }
+        catch (JsonException)
+        {
+            contextError = "Invalid JSON input for loading.";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task SubmitForm()
+    {
+        var runCommand = GetRunCommand();
+        await runQueue.Enqueue(runCommand);
+    }
+
+}

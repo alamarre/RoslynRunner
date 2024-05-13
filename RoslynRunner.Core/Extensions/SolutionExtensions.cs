@@ -30,7 +30,11 @@ public static class SolutionExtensions
         CancellationToken cancellationToken = default)
     {
         var project = solution.GetProject(node);
-        if (project == null) return null;
+        if (project == null)
+        {
+            return null;
+        }
+
         var currentCompilation = await project.GetCompilationAsync(cancellationToken);
 
         return currentCompilation;

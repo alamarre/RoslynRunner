@@ -21,11 +21,17 @@ public static class CompilationTools
             await GetSolution(processorWorkspace, path, null);
         var project =
             processorSolution.Projects.FirstOrDefault(p => projectName == null || p.Name == projectName);
-        if (project == null) throw new Exception("project does not exist");
+        if (project == null)
+        {
+            throw new Exception("project does not exist");
+        }
 
         var compilation = await project.GetCompilationAsync(cancellationToken);
 
-        if (compilation == null) throw new Exception();
+        if (compilation == null)
+        {
+            throw new Exception();
+        }
 
 
         var loadContext = globalContext
@@ -46,7 +52,10 @@ public static class CompilationTools
         var emitOptions = new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb);
         var result = compilation.Emit(assemblyStream, pdbStream, options: emitOptions);
 
-        if (!result.Success) return null;
+        if (!result.Success)
+        {
+            return null;
+        }
 
         assemblyStream.Seek(0, SeekOrigin.Begin);
         pdbStream.Seek(0, SeekOrigin.Begin);
@@ -60,7 +69,10 @@ public static class CompilationTools
         var isProject = path.EndsWith("csproj");
 
         var reporter = new LoggingProgressReporter(logger);
-        if (isProject) return (await workspace.OpenProjectAsync(path, reporter)).Solution;
+        if (isProject)
+        {
+            return (await workspace.OpenProjectAsync(path, reporter)).Solution;
+        }
 
         return await workspace.OpenSolutionAsync(path, reporter);
     }

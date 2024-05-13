@@ -21,7 +21,9 @@ public static class MethodSymbolExtensions
                 var implementedMethod = containingType.FindImplementationForInterfaceMember(interfaceMethod);
 
                 if (methodSymbol.Equals(implementedMethod, SymbolEqualityComparer.Default))
+                {
                     interfaceMethods.Add(interfaceMethod);
+                }
             }
         }
 

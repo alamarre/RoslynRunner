@@ -14,9 +14,16 @@ public sealed partial class LoggingProgressReporter(ILogger? logger) : IProgress
 
     public void Report(ProjectLoadProgress loadProgress)
     {
-        if (logger == null) return;
+        if (logger == null)
+        {
+            return;
+        }
+
         var projectDisplay = Path.GetFileName(loadProgress.FilePath);
-        if (loadProgress.TargetFramework != null) projectDisplay += $" ({loadProgress.TargetFramework})";
+        if (loadProgress.TargetFramework != null)
+        {
+            projectDisplay += $" ({loadProgress.TargetFramework})";
+        }
 
         LogReport(logger, loadProgress.Operation.ToString(), loadProgress.ElapsedTime, projectDisplay);
     }

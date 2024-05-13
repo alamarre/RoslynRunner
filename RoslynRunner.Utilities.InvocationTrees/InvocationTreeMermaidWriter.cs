@@ -28,7 +28,10 @@ internal class InvocationTreeMermaidWriter
             {
                 var newMethod = implementation.MethodSymbol;
                 var relationship = $"{sourceClass} <|-- {newMethod.ContainingType.Name}";
-                if (written.Add(relationship)) sb.AppendLine(relationship);
+                if (written.Add(relationship))
+                {
+                    sb.AppendLine(relationship);
+                }
             }
         }
 

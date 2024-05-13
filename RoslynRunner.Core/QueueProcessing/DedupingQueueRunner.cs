@@ -51,13 +51,21 @@ public static class DedupingQueueRunner
         stopwatch.Start();
         while (queue.Count != 0)
         {
-            if (maxLength > 0 && queue.Count > maxLength) throw new Exception("queue limit exceeded");
+            if (maxLength > 0 && queue.Count > maxLength)
+            {
+                throw new Exception("queue limit exceeded");
+            }
+
             var current = queue.Dequeue();
             IEnumerable<T> newNodes = await processor(current);
 
             foreach (var newItem in newNodes)
+            {
                 if (processed.Add(newItem))
+                {
                     queue.Enqueue(newItem);
+                }
+            }
 
             if (stopwatch.ElapsedMilliseconds > 10000)
             {
@@ -79,8 +87,12 @@ public static class DedupingQueueRunner
             var current = queue.Dequeue();
             IEnumerable<T> newNodes = processor(current);
             foreach (var newItem in newNodes)
+            {
                 if (processed.Add(newItem))
+                {
                     queue.Enqueue(newItem);
+                }
+            }
         }
 
         return processed;

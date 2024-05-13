@@ -30,7 +30,10 @@ public class CommandRunningService(
             }
             finally
             {
-                if (!activity.IsStopped) activity.Stop();
+                if (!activity.IsStopped)
+                {
+                    activity.Stop();
+                }
             }
         }
     }
