@@ -1,0 +1,58 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegacyWebApp.AppHost", "LegacyWebApp\LegacyWebApp.AppHost\LegacyWebApp.AppHost.csproj", "{C254E2B7-21AC-4D27-928A-14E8B63F4550}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegacyWebApp.ServiceDefaults", "LegacyWebApp\LegacyWebApp.ServiceDefaults\LegacyWebApp.ServiceDefaults.csproj", "{F5793E13-E16C-49AB-9AD9-18DC72286229}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModernWebApi", "ModernWebApi\ModernWebApi.csproj", "{11D5FD47-A612-40F2-9225-62701C59D8F7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegacyWebApp", "LegacyWebApp\LegacyWebApp\LegacyWebApp.csproj", "{0C38B58A-E28E-475E-9EFA-3C27BFF1ED5B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegacyWebAppConverter", "LegacyWebAppConverter\LegacyWebAppConverter.csproj", "{D6A6F571-24E8-4BC9-A0D1-1938D0313F95}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModernApi.Analyzers", "ModernApi.Analyzers\ModernApi.Analyzers\ModernApi.Analyzers.csproj", "{C3392F9B-B749-49DD-A280-BE02457DEEE8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Abstractions", "..\..\RoslynRunner.Abstractions\RoslynRunner.Abstractions.csproj", "{79B76326-572C-48F3-81E1-D4DC5C70B141}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Refactoring", "Refactoring", "{02283CA9-6C2F-475A-8804-2126D022709D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C254E2B7-21AC-4D27-928A-14E8B63F4550}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C254E2B7-21AC-4D27-928A-14E8B63F4550}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C254E2B7-21AC-4D27-928A-14E8B63F4550}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C254E2B7-21AC-4D27-928A-14E8B63F4550}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5793E13-E16C-49AB-9AD9-18DC72286229}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5793E13-E16C-49AB-9AD9-18DC72286229}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5793E13-E16C-49AB-9AD9-18DC72286229}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5793E13-E16C-49AB-9AD9-18DC72286229}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11D5FD47-A612-40F2-9225-62701C59D8F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11D5FD47-A612-40F2-9225-62701C59D8F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11D5FD47-A612-40F2-9225-62701C59D8F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11D5FD47-A612-40F2-9225-62701C59D8F7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C38B58A-E28E-475E-9EFA-3C27BFF1ED5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C38B58A-E28E-475E-9EFA-3C27BFF1ED5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C38B58A-E28E-475E-9EFA-3C27BFF1ED5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C38B58A-E28E-475E-9EFA-3C27BFF1ED5B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D6A6F571-24E8-4BC9-A0D1-1938D0313F95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6A6F571-24E8-4BC9-A0D1-1938D0313F95}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6A6F571-24E8-4BC9-A0D1-1938D0313F95}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6A6F571-24E8-4BC9-A0D1-1938D0313F95}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3392F9B-B749-49DD-A280-BE02457DEEE8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3392F9B-B749-49DD-A280-BE02457DEEE8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3392F9B-B749-49DD-A280-BE02457DEEE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3392F9B-B749-49DD-A280-BE02457DEEE8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79B76326-572C-48F3-81E1-D4DC5C70B141}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79B76326-572C-48F3-81E1-D4DC5C70B141}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79B76326-572C-48F3-81E1-D4DC5C70B141}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79B76326-572C-48F3-81E1-D4DC5C70B141}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{79B76326-572C-48F3-81E1-D4DC5C70B141} = {02283CA9-6C2F-475A-8804-2126D022709D}
+		{D6A6F571-24E8-4BC9-A0D1-1938D0313F95} = {02283CA9-6C2F-475A-8804-2126D022709D}
+	EndGlobalSection
+EndGlobal

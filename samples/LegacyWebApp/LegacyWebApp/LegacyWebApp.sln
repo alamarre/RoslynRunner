@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.0.0
+MinimumVisualStudioVersion = 17.8.0.0
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LegacyWebApp.AppHost", "LegacyWebApp.AppHost\LegacyWebApp.AppHost.csproj", "{B9C4E2FB-33D5-42CD-B504-C1EF811A4423}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LegacyWebApp.ServiceDefaults", "LegacyWebApp.ServiceDefaults\LegacyWebApp.ServiceDefaults.csproj", "{DC66706E-2F51-4A24-BA39-DC54C5612E04}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B9C4E2FB-33D5-42CD-B504-C1EF811A4423}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9C4E2FB-33D5-42CD-B504-C1EF811A4423}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9C4E2FB-33D5-42CD-B504-C1EF811A4423}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9C4E2FB-33D5-42CD-B504-C1EF811A4423}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC66706E-2F51-4A24-BA39-DC54C5612E04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC66706E-2F51-4A24-BA39-DC54C5612E04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC66706E-2F51-4A24-BA39-DC54C5612E04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC66706E-2F51-4A24-BA39-DC54C5612E04}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {35FFC216-123A-4348-AF0E-4707C4B0EE15}
+	EndGlobalSection
+EndGlobal
