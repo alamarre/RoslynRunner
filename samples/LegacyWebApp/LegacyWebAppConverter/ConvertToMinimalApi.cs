@@ -30,7 +30,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             foreach (var controller in controllers)
             {
                 var httpMethods = GetHttpMethods(controller, semanticModel);
-                var newClassDeclaration = ConvertControllerToEndpoint(controller, httpMethods);
+                var newClassDeclaration = ConvertControllerToEndpoint(controller, httpMethods, semanticModel);
                 syntaxRoot = ReplaceControllerWithEndpoint(syntaxRoot, controller, newClassDeclaration);
 
                 var newDocument = document.WithSyntaxRoot(syntaxRoot);
@@ -58,7 +58,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                 .Any(a => a.Name.ToString().StartsWith("Http")));
     }
 
-    private ClassDeclarationSyntax ConvertControllerToEndpoint(ClassDeclarationSyntax controller, IEnumerable<MethodDeclarationSyntax> httpMethods)
+    private ClassDeclarationSyntax ConvertControllerToEndpoint(ClassDeclarationSyntax controller, IEnumerable<MethodDeclarationSyntax> httpMethods, SemanticModel model)
     {
         var className = controller.Identifier.Text.Replace("Controller", "Endpoint");
 
@@ -69,7 +69,8 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             .Select(m => m.ToFullString());
 
         // Convert only HTTP methods
-        var httpMethodDeclarations = httpMethods.Select(ConvertMethodToMinimalApi);
+        var httpMethodDeclarations = httpMethods
+            .Select(m => ConvertMethodToMinimalApi(m, model));
 
         var newClassText = $@"
         public partial class {className}
@@ -82,7 +83,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
         return ParseClassFromText(newClassText);
     }
 
-    private string ConvertMethodToMinimalApi(MethodDeclarationSyntax method)
+    private string ConvertMethodToMinimalApi(MethodDeclarationSyntax method, SemanticModel semanticModel)
     {
         var httpAttribute = method.AttributeLists
             .SelectMany(a => a.Attributes)
@@ -97,12 +98,70 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
         var routeArgument = httpAttribute.ArgumentList?.Arguments.FirstOrDefault()?.ToString().Trim('"');
 
         var methodName = method.Identifier.Text;
+        var methodBody = method.Body != null ? TransformMethodBody(method, semanticModel) : string.Empty;
+
         return $@"
         [Api(HttpVerb.{httpMethod}, ""{routeArgument}"")]
         public IResult {methodName}()
         {{
-            return TypedResults.Text(""pong"");
+            {methodBody}
         }}";
+    }
+
+    private string TransformMethodBody(MethodDeclarationSyntax method, SemanticModel semanticModel)
+    {
+        var returnType = semanticModel.GetDeclaredSymbol(method)?.ReturnType;
+
+        if (returnType == null || method.Body == null)
+        {
+            return method.Body?.ToFullString() ?? string.Empty;
+        }
+
+        var returnStatements = method.Body.DescendantNodes()
+            .OfType<ReturnStatementSyntax>()
+            .ToList();
+
+        var transformedBody = method.Body.ToFullString();
+    
+        // Replace each return statement with appropriate TypedResults method
+        foreach (var returnStatement in returnStatements)
+        {
+            var returnExpression = returnStatement.Expression?.ToFullString();
+
+            if (returnExpression == null)
+            {
+                continue;
+            }
+
+            // Match the return type with appropriate TypedResults method
+            string typedResultMethod = GetTypedResultForReturnType(returnType);
+            var transformedReturn = $"TypedResults.{typedResultMethod}({returnExpression})";
+
+            // Replace the original return statement with the transformed one
+            transformedBody = transformedBody.Replace(returnStatement.ToFullString(), $"return {transformedReturn};");
+        }
+
+        return transformedBody;
+    }
+    
+    private string GetTypedResultForReturnType(ITypeSymbol returnType)
+    {
+        // Map return types to appropriate TypedResults method
+        if (returnType.SpecialType == SpecialType.System_String)
+        {
+            return "Text";
+        }
+        if (returnType.SpecialType == SpecialType.System_Int32 || returnType.SpecialType == SpecialType.System_Int64)
+        {
+            return "Json";  // You can change this mapping to other types like `Json` or `Ok`.
+        }
+        if (returnType.Name == "JsonResult")
+        {
+            return "Json";
+        }
+
+        // Default TypedResult method for unknown return types
+        return "Ok";
     }
 
     private SyntaxNode ReplaceControllerWithEndpoint(SyntaxNode syntaxRoot, ClassDeclarationSyntax oldController, ClassDeclarationSyntax newController)
@@ -115,5 +174,4 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
         var syntaxTree = CSharpSyntaxTree.ParseText(classText);
         return syntaxTree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().First();
     }
-
 }
