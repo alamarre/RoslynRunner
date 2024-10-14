@@ -1,6 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Core;
 
@@ -16,6 +17,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
         var compilation = await project.GetCompilationAsync(cancellationToken);
         var controllerAttribute = compilation!.GetTypeByMetadataName("Microsoft.AspNetCore.Mvc.ApiControllerAttribute");
 
+        var editedProject = project;
         foreach (var document in project.Documents)
         {
             var syntaxRoot = await document.GetSyntaxRootAsync(cancellationToken);
@@ -26,17 +28,65 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             var semanticModel = compilation.GetSemanticModel(syntaxRoot.SyntaxTree);
 
             var controllers = GetControllersWithAttribute(syntaxRoot, semanticModel, controllerAttribute);
-
+            
             foreach (var controller in controllers)
             {
                 var httpMethods = GetHttpMethods(controller, semanticModel);
                 var newClassDeclaration = ConvertControllerToEndpoint(controller, httpMethods, semanticModel);
                 syntaxRoot = ReplaceControllerWithEndpoint(syntaxRoot, controller, newClassDeclaration);
 
-                var newDocument = document.WithSyntaxRoot(syntaxRoot);
-                solution = solution.WithDocumentSyntaxRoot(newDocument.Id, syntaxRoot);
+                syntaxRoot = ReplaceNamespace(syntaxRoot);
+
+                syntaxRoot = Formatter.Format(syntaxRoot, solution.Workspace);
+                
+                // Get the current file path and replace the directory and filename
+                var oldFilePath = document.FilePath!;  // Assuming document.FilePath is not null
+
+                // Replace "Controllers" with "Endpoints" in the directory path
+                var newFilePath = oldFilePath.Replace("Controllers", "Endpoints");
+
+                // Replace "Controller" with "Endpoint" in the file name
+                var fileName = Path.GetFileName(newFilePath);
+                var newFileName = fileName.Replace("Controller", "Endpoint");
+
+                // Combine the new directory path and renamed file
+                newFilePath = Path.Combine(Path.GetDirectoryName(newFilePath)!, newFileName);
+
+                var folders = new List<string>(document.Folders);
+                if (folders.Contains("Controllers"))
+                {
+                    // Replace "Controllers" with "Endpoints" in the folder structure
+                    var controllerIndex = folders.IndexOf("Controllers");
+                    folders[controllerIndex] = "Endpoints";
+                }
+                
+                // Add the new document to the project with the updated file path and content
+                var addedDoc = editedProject.AddDocument(newFileName, syntaxRoot, folders: folders, filePath: newFilePath);
+                editedProject = addedDoc.Project;
             }
         }
+        
+        solution = editedProject.Solution;
+        if (solution.Workspace.TryApplyChanges(solution))
+        {
+            logger.LogInformation($"successfully applied changes");
+        }
+        else
+        {
+            logger.LogWarning($"Failed to apply changes");
+        }
+    }
+    
+    private SyntaxNode ReplaceNamespace(SyntaxNode syntaxRoot)
+    {
+        var namespaceDeclaration = syntaxRoot.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        if (namespaceDeclaration != null)
+        {
+            var newNamespace = namespaceDeclaration.Name.ToString().Replace("Controllers", "Endpoints");
+            return syntaxRoot.ReplaceNode(namespaceDeclaration, namespaceDeclaration.WithName(SyntaxFactory.ParseName(newNamespace)));
+        }
+
+        return syntaxRoot;
     }
 
     private IEnumerable<ClassDeclarationSyntax> GetControllersWithAttribute(SyntaxNode syntaxRoot, SemanticModel semanticModel, INamedTypeSymbol? controllerAttribute)
@@ -101,11 +151,16 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
         var methodBody = method.Body != null ? TransformMethodBody(method, semanticModel) : string.Empty;
 
         return $@"
-        [Api(HttpVerb.{httpMethod}, ""{routeArgument}"")]
+        [Api(HttpVerb.{ToPascalCase(httpMethod)}, ""{routeArgument}"")]
         public IResult {methodName}()
         {{
             {methodBody}
         }}";
+    }
+
+    private string ToPascalCase(string input)
+    {
+        return (input.Length > 1 ? char.ToUpperInvariant(input[0]) + input.Substring(1).ToLowerInvariant() : string.Empty);
     }
 
     private string TransformMethodBody(MethodDeclarationSyntax method, SemanticModel semanticModel)
