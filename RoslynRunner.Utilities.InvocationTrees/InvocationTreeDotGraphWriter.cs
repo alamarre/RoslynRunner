@@ -13,7 +13,9 @@ namespace RoslynRunner.Utilities.InvocationTrees;
 public class InvocationTreeDotGraphWriter
 {
     public static async Task<string> GetDotGraphForCallers(IEnumerable<InvocationMethod> methods,
-        params InvocationMethod[] endpoints)
+         bool writeAllMethods = false,
+        params InvocationMethod[] endpoints
+       )
     {
         var graph = new DotGraph().WithIdentifier("Dependency graph");
         Dictionary<ISymbol, DotNode> written = new(SymbolEqualityComparer.Default);
@@ -29,24 +31,49 @@ public class InvocationTreeDotGraphWriter
             graph.Elements.Add(typeNode);
             written.Add(type.Key, typeNode);
         }
+        List<DotEdge> writtenEdges = new();
+
 
         foreach (var method in methods)
-        foreach (var caller in method.Callers)
         {
-            var callerNode = written[caller.MethodSymbol.ContainingType];
-            var methodNode = written[method.MethodSymbol.ContainingType];
-            var edge = new DotEdge()
-                .From(callerNode)
-                .To(methodNode)
-                .WithLabel(method.MethodSymbol.Name);
-            if (methodNode.Color?.Value != "red" &&
-                method.MethodSymbol.ContainingType.AllInterfaces.Any(i =>
-                    i.Equals(caller.MethodSymbol.ContainingType, SymbolEqualityComparer.Default)))
+            foreach (var caller in method.Callers)
             {
-                methodNode.WithColor("blue");
-            }
+                // TODO: maybe double check that we pruned results so this isn't an error
+                if (!written.ContainsKey(caller.MethodSymbol.ContainingType))
+                {
+                    continue;
+                }
+                var callerNode = written[caller.MethodSymbol.ContainingType];
+                var methodNode = written[method.MethodSymbol.ContainingType];
+                if(!writeAllMethods)
+                {                    
+                    if(callerNode == methodNode)
+                    {
+                        continue;
+                    }
 
-            graph.Elements.Add(edge);
+                    if (writtenEdges.Any(e => e.From == callerNode.Identifier && e.To == methodNode.Identifier))
+                    {
+                        continue;
+                    }
+                }
+                var edge = new DotEdge()
+                    .From(callerNode)
+                    .To(methodNode);
+                writtenEdges.Add(edge);
+                if (writeAllMethods)
+                {
+                    edge = edge.WithLabel(method.MethodSymbol.Name);
+                }
+                if (methodNode.Color?.Value != "red" &&
+                    method.MethodSymbol.ContainingType.AllInterfaces.Any(i =>
+                        i.Equals(caller.MethodSymbol.ContainingType, SymbolEqualityComparer.Default)))
+                {
+                    methodNode.WithColor("blue");
+                }
+
+                graph.Elements.Add(edge);
+            }
         }
 
         await using var writer = new StringWriter();

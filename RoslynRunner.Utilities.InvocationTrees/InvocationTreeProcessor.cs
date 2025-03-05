@@ -10,17 +10,11 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
-public class InvocationTreeProcessor : ISolutionProcessor
+public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcessorParameters>
 {
-    public async Task ProcessSolution(Solution solution, string? context, ILogger logger,
+    public async Task ProcessSolution(Solution solution, InvocationTreeProcessorParameters? parameters, ILogger logger,
         CancellationToken cancellationToken)
     {
-        if (context == null)
-        {
-            throw new ArgumentException("context must be an InvocationTreeProcessorParameters");
-        }
-
-        var parameters = JsonSerializer.Deserialize<InvocationTreeProcessorParameters>(context);
         if (parameters == null)
         {
             throw new Exception("context must be an InvocationTreeProcessorParameters");
@@ -30,44 +24,85 @@ public class InvocationTreeProcessor : ISolutionProcessor
             cancellationToken);
 
         var (results, allMethods) =
-            await InvocationTreeBuilder.BuildInvocationTreeAsync((INamedTypeSymbol)symbol, solution, cancellationToken);
+            await InvocationTreeBuilder.BuildInvocationTreeAsync((INamedTypeSymbol)symbol, solution, parameters.MethodFilter, parameters.MaxImplementations, cancellationToken);
         if (parameters.Diagrams != null)
         {
             foreach (var diagram in parameters.Diagrams)
             {
+                var diagramMethods = allMethods;
+               
+                if(!Directory.Exists(diagram.OutputPath))
+                {
+                    Directory.CreateDirectory(diagram.OutputPath);
+                }
+
+                if (diagram.InclusivePruneFilter != null)
+                {
+                    var root = results.Methods.First();
+                    diagramMethods = DedupingQueueRunner.ProcessResults((InvocationMethod i) => {
+                        bool selfIsSafe = (new[] { i }).AsQueryable().Any(diagram.InclusivePruneFilter);
+                        if (!selfIsSafe)
+                        {
+                            return [];
+                        }
+                        //var safeMethods = i.InvokedMethods.Values.AsQueryable().Where(diagram.InclusivePruneFilter);
+
+                        List<InvocationMethod> children = i.InvokedMethods.Values.Concat(i.Implementations).ToList();
+                        return children;
+                    }, [root]).ToList();
+
+                }
+                HashSet<IMethodSymbol> validMethods = new(diagramMethods.Select(m => m.MethodSymbol), SymbolEqualityComparer.Default);
                 if (diagram.Filter != null)
                 {
-                    var filteredMethods = allMethods
+                    var filteredMethods = diagramMethods
                         .Where(m => m.InvokedMethods.AsQueryable().Where(diagram.Filter).Any())
                         .ToArray();
                     if (diagram.SeparateDiagrams)
                     {
                         foreach (var method in filteredMethods)
                         {
-                            var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers, new[] { method });
+                            var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), new[] { method });
                             var result = diagram.DiagramType == "dot"
-                                ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, method)
+                                ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods, method)
                                 : InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
 
                             var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
                             var fileName = method.MethodSymbol.ContainingType.ToDisplayString() + "." +
                                            method.MethodSymbol.Name + extension;
-
-                            File.WriteAllText(Path.Combine(diagram.OutputPath, fileName), result);
+                            fileName = fileName.Replace('<', '_').Replace('>', '_');
+                            try
+                            {
+                                File.WriteAllText(Path.Combine(diagram.OutputPath, fileName), result);
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine(e);
+                            }
                         }
                     }
                     else
                     {
-                        var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers, filteredMethods);
-                        var result = InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
-                        ;
-                        File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + ".md", result);
+                        var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where( c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
+                        var result = diagram.DiagramType == "dot"
+                            ? await  InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods)
+                            : InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
+
+
+                        var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
+
+                        File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + extension, result);
                     }
                 }
                 else
                 {
-                    var result = InvocationTreeMermaidWriter.GetMermaidDag(allMethods.ToList());
-                    File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + ".md", result);
+                    var result = diagram.DiagramType == "dot"
+                            ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods)
+                            : InvocationTreeMermaidWriter.GetMermaidDagForCallers(diagramMethods);
+
+
+                    var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
+                    File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + extension, result);
                 }
             }
         }
