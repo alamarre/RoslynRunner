@@ -14,7 +14,7 @@ namespace RoslynRunner.Utilities.InvocationTrees;
 public static class InvocationTreeBuilder
 {
     public static async Task<(InvocationRoot, List<InvocationMethod>)> BuildInvocationTreeAsync(
-        INamedTypeSymbol startingType, Solution solution, CancellationToken cancellationToken = default)
+        ISymbol startingType, Solution solution, string? methodFilter = null, int? maxLimit = null, CancellationToken cancellationToken = default)
     {
         Dictionary<IMethodSymbol, InvocationMethod> methodCache = new(SymbolEqualityComparer.Default);
         foreach (var location in startingType.Locations)
@@ -36,7 +36,11 @@ public static class InvocationTreeBuilder
                 continue;
             }
 
-            var methodNodes = node.DescendantNodes().OfType<MethodDeclarationSyntax>();
+            var methodNodes = node.DescendantNodesAndSelf().OfType<MethodDeclarationSyntax>();
+            if(methodFilter != null)
+            {
+                methodNodes = methodNodes.Where(m => m.Identifier.ValueText == methodFilter);
+            }
             var methodSymbols = methodNodes.Select(m => rootModel.GetDeclaredSymbol(m, cancellationToken))
                 .Cast<IMethodSymbol>();
             var initialMethods = methodSymbols.Select(m =>
@@ -54,17 +58,10 @@ public static class InvocationTreeBuilder
                         return newMethods;
                     }
 
-
-                    // TODO: make this conditional
-                    /*if(solution.GetProject(currentMethodNode)?.AssemblyName != rootModel.Compilation.AssemblyName)
-                    {
-                        return newMethods;
-                    }*/
-
                     var implementations =
-                        (await SymbolFinder.FindImplementationsAsync(methodSymbol, solution,
+                        (await CachingSymbolFinder.FindImplementationsAsync(methodSymbol, solution,
                             cancellationToken: cancellationToken)).ToArray();
-                    if (implementations.Any() && implementations.Length < 6)
+                    if (implementations.Any() && (maxLimit is null || implementations.Length < maxLimit))
                     {
                         foreach (var implementation in implementations)
                         {
