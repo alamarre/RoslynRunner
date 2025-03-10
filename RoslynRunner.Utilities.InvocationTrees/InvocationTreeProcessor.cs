@@ -24,7 +24,12 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
             cancellationToken);
 
         var (results, allMethods) =
-            await InvocationTreeBuilder.BuildInvocationTreeAsync((INamedTypeSymbol)symbol, solution, parameters.MethodFilter, parameters.MaxImplementations, cancellationToken);
+            await InvocationTreeBuilder.BuildInvocationTreeAsync(
+                startingType: (INamedTypeSymbol)symbol,
+                solution: solution,
+                methodFilter: parameters.MethodFilter,
+                maxLimit: parameters.MaxImplementations,
+                cancellationToken: cancellationToken);
         if (parameters.Diagrams != null)
         {
             foreach (var diagram in parameters.Diagrams)
