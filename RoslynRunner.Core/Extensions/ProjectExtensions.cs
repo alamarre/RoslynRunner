@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using RoslynRunner.Core.QueueProcessing;
 
 namespace RoslynRunner.Core.Extensions;
 
@@ -17,9 +18,83 @@ public record MethodData(
 public record SymbolCache(
     Dictionary<IMethodSymbol, MethodData> MethodCache,
     Dictionary<IMethodSymbol, List<IMethodSymbol>> ImplementationCache,
-    Dictionary<ISymbol, List<ISymbol>> TypeImplementations,
+    Dictionary<string, List<ISymbol>> TypeImplementations,
     Dictionary<string, INamedTypeSymbol> MetadataNameCache,
     Dictionary<IOperation, List<IMethodSymbol>> CallerCache);
+
+public class CachedSymbolFinder
+{
+    public SymbolCache SymbolCache { get; }
+
+    public static async Task<CachedSymbolFinder> FromCache(Project startingProject,
+        Func<Document, bool>? filterFunction = null,
+        CancellationToken cancellationToken = default)
+    {
+        if(MemoryCache.Cache.TryGetValue("symbol-cache", out var cached) 
+            && cached is Dictionary<Project, SymbolCache> cachedDict
+            && cachedDict.TryGetValue(startingProject, out SymbolCache? symbolCache)) {
+            return new CachedSymbolFinder(symbolCache);
+        }
+
+        symbolCache = await startingProject.BuildSymbolCacheAsync(filterFunction, cancellationToken);
+       
+        if (cached is not Dictionary<Project, SymbolCache> cacheDict)
+        {
+            MemoryCache.Cache["symbol-cache"] = cacheDict = new();
+        }
+        cacheDict[startingProject] = symbolCache;
+        return new CachedSymbolFinder(symbolCache);
+    }
+
+    public CachedSymbolFinder(SymbolCache symbolCache)
+    {
+        SymbolCache = symbolCache;
+    }
+
+    public static string GetFullyQualifiedMetadataName(ISymbol symbol)
+    {
+        return symbol.GetFullMetadataName();
+    }
+
+    public List<ISymbol>? FindTypeImplementations(ISymbol symbol)
+    {
+        string key = GetFullyQualifiedMetadataName(symbol);
+        return SymbolCache.TypeImplementations.TryGetValue(key, out var implementations) ? implementations : null;
+    }
+
+    public List<IMethodSymbol>? FindCallers(IOperation operation)
+    {
+        return SymbolCache.CallerCache.TryGetValue(operation, out var callers) ? callers : null;
+    }
+
+    public MethodData? GetMethodData(IMethodSymbol methodSymbol)
+    {
+        return SymbolCache.MethodCache.TryGetValue(methodSymbol, out var methodData) ? methodData : null;
+    }
+
+    public List<IMethodSymbol>? GetImplementations(IMethodSymbol methodSymbol)
+    {
+        return SymbolCache.ImplementationCache.TryGetValue(methodSymbol, out var implementations) ? implementations : null;
+    }
+
+
+
+    public List<IMethodSymbol> GetMethods(string typeMetadataName, string methodName)
+    {
+        List<IMethodSymbol> methods = new();
+        var type = GetSymbolByMetadataName(typeMetadataName);
+        if (type is null)
+        {
+            return methods;
+        }
+        return type.GetMembers(methodName).OfType<IMethodSymbol>().ToList();
+    }
+
+    public INamedTypeSymbol? GetSymbolByMetadataName(string metadataName)
+    {
+        return SymbolCache.MetadataNameCache.TryGetValue(metadataName, out var symbol) ? symbol : null;
+    }
+}
 
 public static class ProjectExtensions
 {
@@ -28,11 +103,11 @@ public static class ProjectExtensions
         Func<Document, bool>? filterFunction = null,
         CancellationToken cancellationToken = default)
     {
-        Dictionary<IMethodSymbol, MethodData> methodCache = new Dictionary<IMethodSymbol, MethodData>(SymbolEqualityComparer.Default);
-        Dictionary<IMethodSymbol, List<IMethodSymbol>> implementationCache = new Dictionary<IMethodSymbol, List<IMethodSymbol>>(SymbolEqualityComparer.Default);
-        Dictionary<ISymbol, List<ISymbol>> typeImplementations = new Dictionary<ISymbol, List<ISymbol>>(SymbolEqualityComparer.Default);
-        Dictionary<IOperation, List<IMethodSymbol>> callerCache = new Dictionary<IOperation, List<IMethodSymbol>>();
-        Dictionary<string, INamedTypeSymbol> metadataNameCache = new Dictionary<string, INamedTypeSymbol>();
+        Dictionary<IMethodSymbol, MethodData> methodCache = new(SymbolEqualityComparer.Default);
+        Dictionary<IMethodSymbol, List<IMethodSymbol>> implementationCache = new(SymbolEqualityComparer.Default);
+        Dictionary<string, List<ISymbol>> typeImplementations = new();
+        Dictionary<IOperation, List<IMethodSymbol>> callerCache = new();
+        Dictionary<string, INamedTypeSymbol> metadataNameCache = new();
         foreach (Project project in startingProject.Solution.Projects)
         {
             Compilation? compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
@@ -45,7 +120,7 @@ public static class ProjectExtensions
             List<INamedTypeSymbol> allTypes = GetAllTypes(compilation);
             foreach(var type in allTypes)
             {
-                metadataNameCache[type.ContainingNamespace+"."+type.MetadataName] = type;
+                metadataNameCache[CachedSymbolFinder.GetFullyQualifiedMetadataName(type)] = type;
             }
 
             // Process each type to populate typeImplementations and process its methods.
@@ -56,37 +131,37 @@ public static class ProjectExtensions
                 foreach (ISymbol interfaceSymbol in interfaceSymbols)
                 {
                     List<ISymbol>? implementations;
-                    if (!typeImplementations.TryGetValue(interfaceSymbol, out implementations))
+                    string key = CachedSymbolFinder.GetFullyQualifiedMetadataName(interfaceSymbol);
+                    if (!typeImplementations.TryGetValue(key, out implementations))
                     {
                         implementations = new List<ISymbol>();
-                        typeImplementations.Add(interfaceSymbol, implementations);
+                        typeImplementations.Add(key, implementations);
                     }
                     implementations.Add(namedType);
                 }
 
-                // Map base type if applicable.
-                if (namedType.BaseType is not null && namedType.BaseType.SpecialType != SpecialType.System_Object)
+                DedupingQueueRunner.ProcessResults(baseSymbol =>
                 {
-                    ISymbol baseTypeSymbol = namedType.BaseType;
-                    List<ISymbol>? baseImplementations;
-                    if (!typeImplementations.TryGetValue(baseTypeSymbol, out baseImplementations))
+                    if (baseSymbol?.BaseType is not null && baseSymbol.BaseType.SpecialType != SpecialType.System_Object)
                     {
-                        baseImplementations = new List<ISymbol>();
-                        typeImplementations.Add(baseTypeSymbol, baseImplementations);
+                        ISymbol baseTypeSymbol = baseSymbol.BaseType;
+                        List<ISymbol>? baseImplementations;
+                        string key = CachedSymbolFinder.GetFullyQualifiedMetadataName(baseTypeSymbol);
+                        if (!typeImplementations.TryGetValue(key, out baseImplementations))
+                        {
+                            baseImplementations = new List<ISymbol>();
+                            typeImplementations.Add(key, baseImplementations);
+                        }
+                        baseImplementations.Add(baseTypeSymbol);
+                        return [baseSymbol.BaseType];
                     }
-                    baseImplementations.Add(namedType);
-                }
+                    return [];
+                }, namedType.BaseType);
+                
 
                 // Process each method declared on the type.
-                foreach (ISymbol member in namedType.GetMembers())
+                foreach (IMethodSymbol methodSymbol in namedType.GetMembers().OfType<IMethodSymbol>())
                 {
-                    if (member is not IMethodSymbol methodSymbol)
-                    {
-                        continue;
-                    }
-
-                    // Optionally filter methods based on a document filter.
-                    // If a filter is provided, check one syntax reference.
                     var syntaxReferences = methodSymbol.DeclaringSyntaxReferences;
                     if (syntaxReferences.Length == 0)
                     {
@@ -94,7 +169,7 @@ public static class ProjectExtensions
                     }
 
                     SyntaxReference syntaxReference = syntaxReferences[0];
-                    SyntaxNode syntaxNode = await syntaxReference.GetSyntaxAsync().ConfigureAwait(false);
+                    SyntaxNode syntaxNode = await syntaxReference.GetSyntaxAsync(cancellationToken).ConfigureAwait(false);
                     if (filterFunction is not null)
                     {
                         Document? document = project.GetDocument(syntaxNode.SyntaxTree);
@@ -104,9 +179,8 @@ public static class ProjectExtensions
                         }
                     }
 
-                    // Retrieve the semantic model for the method.
                     SemanticModel semanticModel = compilation.GetSemanticModel(syntaxNode.SyntaxTree);
-                    IOperation? methodOperation = semanticModel.GetOperation(syntaxNode);
+                    IOperation? methodOperation = semanticModel.GetOperation(syntaxNode, cancellationToken);
                     IOperation[] invokedOperations;
                     if (methodOperation is not null)
                     {
@@ -129,7 +203,6 @@ public static class ProjectExtensions
                         methodCache.Add(methodSymbol, methodData);
                     }
 
-                    // Process method overrides.
                     if (methodSymbol.OverriddenMethod is not null)
                     {
                         IMethodSymbol baseMethod = methodSymbol.OverriddenMethod;
@@ -142,28 +215,12 @@ public static class ProjectExtensions
                         implementations.Add(methodSymbol);
                     }
 
-                    // Process explicit interface implementations.
-                    foreach (IMethodSymbol explicitInterfaceMethod in methodSymbol.ExplicitInterfaceImplementations)
-                    {
-                        List<IMethodSymbol>? implementations;
-                        if (!implementationCache.TryGetValue(explicitInterfaceMethod, out implementations))
-                        {
-                            implementations = new List<IMethodSymbol>();
-                            implementationCache.Add(explicitInterfaceMethod, implementations);
-                        }
-                        implementations.Add(methodSymbol);
-                    }
-
-                    // Process implicit interface implementations.
+                    // Process interface implementations.
                     INamedTypeSymbol containingType = methodSymbol.ContainingType;
                     foreach (INamedTypeSymbol interfaceType in containingType.AllInterfaces)
                     {
                         foreach (IMethodSymbol interfaceMember in interfaceType.GetMembers().OfType<IMethodSymbol>())
                         {
-                            if (methodSymbol.ExplicitInterfaceImplementations.Contains(interfaceMember))
-                            {
-                                continue;
-                            }
                             IMethodSymbol? implementation = containingType.FindImplementationForInterfaceMember(interfaceMember) as IMethodSymbol;
                             if (implementation is not null && SymbolEqualityComparer.Default.Equals(implementation, methodSymbol))
                             {
