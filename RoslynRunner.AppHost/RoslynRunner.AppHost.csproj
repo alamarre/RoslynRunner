@@ -1,20 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
-    <Sdk Name="Aspire.AppHost.Sdk" Version="9.0.0" />
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <IsAspireHost>true</IsAspireHost>
-        <UserSecretsId>27408BE4-2B11-40AE-BE00-1C67D9504E58</UserSecretsId>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <PackageReference Include="Aspire.Hosting.AppHost" Version="8.2.2"/>
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj"/>
-    </ItemGroup>
-
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.1.0" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAspireHost>true</IsAspireHost>
+    <UserSecretsId>27408BE4-2B11-40AE-BE00-1C67D9504E58</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
+  </ItemGroup>
 </Project>
