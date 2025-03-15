@@ -1,5 +1,5 @@
-using System.ComponentModel;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -15,7 +15,7 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
     private MethodInfo? processMethod =
         typeof(RunCommandProcessor).GetMethod(nameof(ProcessInstance), BindingFlags.NonPublic | BindingFlags.Instance);
 
-
+    private TestAssemblyLoadContext? _assemblyLoadContext;
     public void RemovePersistedSolution(string solution)
     {
         _persistentSolutions.Remove(solution);
@@ -62,7 +62,18 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
                 throw new Exception();
             }
 
-            loadContext = new TestAssemblyLoadContext(runCommand.AssemblyLoadContextPath);
+            AssemblyLoadContext secondaryContext = AssemblyLoadContext.Default;
+            if (runCommand.AssemblyLoadContextPath is not null)
+            {
+                if (runCommand.AssemblyLoadContextPath != _assemblyLoadContext?.LibDirectory)
+                {
+                    _assemblyLoadContext?.Unload();
+                    _assemblyLoadContext = new TestAssemblyLoadContext(runCommand.AssemblyLoadContextPath);
+                }
+                secondaryContext = _assemblyLoadContext;
+            }
+
+            loadContext = new TestAssemblyLoadContext(null, secondaryContext);
             var assembly = CompilationTools.GetAssembly(compilation, loadContext);
             if (assembly == null)
             {

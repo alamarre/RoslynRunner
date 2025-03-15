@@ -51,6 +51,14 @@ app.MapPost("/run", async (
     return Results.Created();
 });
 
+app.MapPost("/rerun", async (
+    IRunQueue queue,
+    CancellationToken cancellationToken) =>
+{
+    await queue.ReRunLastEnqueuedCommand(cancellationToken);
+    return Results.Created();
+});
+
 app.MapPost("/assemblies/global", async (
     [FromBody] LibraryReference reference,
     CancellationToken cancellationToken) =>

@@ -31,15 +31,15 @@ public static class CachingSymbolFinder
         return symbols;
     }
 
-    public static async Task<IEnumerable<ISymbol>> FindImplementationsAsync(INamedTypeSymbol symbol, Solution solution,
+    public static async Task<IEnumerable<ISymbol>> FindImplementationsAsync(ISymbol symbol, Solution solution,
         CancellationToken cancellationToken = default)
     {
         const string cacheKey = "implementations-cache";
         if (!MemoryCache.Cache.TryGetValue(cacheKey, out var cached)
-            || cached is not Dictionary<INamedTypeSymbol, IEnumerable<ISymbol>> symbolCallerCache)
+            || cached is not Dictionary<ISymbol, IEnumerable<ISymbol>> symbolCallerCache)
         {
             MemoryCache.Cache[cacheKey] = symbolCallerCache =
-                new Dictionary<INamedTypeSymbol, IEnumerable<ISymbol>>(SymbolEqualityComparer.Default);
+                new Dictionary<ISymbol, IEnumerable<ISymbol>>(SymbolEqualityComparer.Default);
         }
 
         if (symbolCallerCache.TryGetValue(symbol, out var implementations))

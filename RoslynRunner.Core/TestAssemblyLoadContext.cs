@@ -1,52 +1,81 @@
+using System;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 
 namespace RoslynRunner.Core;
 
-// based on https://learn.microsoft.com/en-us/dotnet/standard/assembly/unloadability
 public class TestAssemblyLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver? _resolver;
     private readonly string? _libDirectory;
+    private readonly AssemblyLoadContext _secondaryContext;
 
-    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath) : base(true)
+    public TestAssemblyLoadContext(string? mainAssemblyToLoadPath, AssemblyLoadContext? secondaryContext = null)
+        : base(isCollectible: true)
     {
-        if (Directory.Exists(mainAssemblyToLoadPath))
+        AssemblyLoadContext localSecondaryContext = secondaryContext ?? AssemblyLoadContext.Default;
+        _secondaryContext = localSecondaryContext;
+
+        if (mainAssemblyToLoadPath != null && Directory.Exists(mainAssemblyToLoadPath))
         {
-            _libDirectory = mainAssemblyToLoadPath;
+            string localLibDirectory = mainAssemblyToLoadPath;
+            _libDirectory = localLibDirectory;
         }
         else if (mainAssemblyToLoadPath != null)
         {
-            _resolver = new AssemblyDependencyResolver(mainAssemblyToLoadPath);
+            AssemblyDependencyResolver localResolver = new AssemblyDependencyResolver(mainAssemblyToLoadPath);
+            _resolver = localResolver;
         }
     }
+    
+    public string? LibDirectory => _libDirectory;
 
     protected override Assembly? Load(AssemblyName name)
     {
-        if (Default.Assemblies.Any(a => a.GetName().Name == name.Name))
+        Assembly? localAssembly = null;
+
+        Assembly[] defaultAssemblies = Default.Assemblies.ToArray();
+        bool isFound = defaultAssemblies.Any((Assembly assembly) => assembly.GetName().Name == name.Name);
+        if (isFound)
         {
             return null;
         }
 
         if (_libDirectory != null)
         {
-            var path = Path.Combine(_libDirectory, name.Name + ".dll");
-            if (File.Exists(path))
+            string assemblyFileName = name.Name + ".dll";
+            string assemblyPath = Path.Combine(_libDirectory, assemblyFileName);
+            if (File.Exists(assemblyPath))
             {
-                return LoadFromAssemblyPath(path);
+                localAssembly = LoadFromAssemblyPath(assemblyPath);
+                if (localAssembly != null)
+                {
+                    return localAssembly;
+                }
             }
         }
 
-        if (_resolver == null)
+        if (_resolver != null)
         {
-            return null;
+            string? resolvedPath = _resolver.ResolveAssemblyToPath(name);
+            if (resolvedPath != null)
+            {
+                localAssembly = LoadFromAssemblyPath(resolvedPath);
+                if (localAssembly != null)
+                {
+                    return localAssembly;
+                }
+            }
         }
-
-        var assemblyPath = _resolver.ResolveAssemblyToPath(name);
-        if (assemblyPath != null)
+        
+        localAssembly = _secondaryContext.LoadFromAssemblyName(name);
+        if (localAssembly != null)
         {
-            return LoadFromAssemblyPath(assemblyPath);
+            return localAssembly;
         }
+        
 
         return null;
     }
