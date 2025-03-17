@@ -6,7 +6,10 @@ using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
 using RoslynRunner.UI;
 
-MSBuildLocator.RegisterDefaults();
+try
+{
+    MSBuildLocator.RegisterDefaults();
+}catch(Exception){}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,8 +27,9 @@ builder.Services.AddSingleton<IRunQueue, RunQueue>();
 
 builder.Services.AddSingleton<RunCommandProcessor>();
 builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManager>();
-
-builder.Services.AddHostedService<CommandRunningService>();
+    
+builder.Services.AddSingleton<CommandRunningService>();
+builder.Services.AddHostedService<CommandRunningService>(ctx => ctx.GetRequiredService<CommandRunningService>());
 builder.AddServiceDefaults();
 
 var app = builder.Build();
@@ -47,16 +51,16 @@ app.MapPost("/run", async (
     [FromBody] RunCommand runCommand,
     CancellationToken cancellationToken) =>
 {
-    await queue.Enqueue(runCommand, cancellationToken);
-    return Results.Created();
+    var id = await queue.Enqueue(runCommand, cancellationToken);
+    return Results.Ok(new { RunId = id});
 });
 
 app.MapPost("/rerun", async (
     IRunQueue queue,
     CancellationToken cancellationToken) =>
 {
-    await queue.ReRunLastEnqueuedCommand(cancellationToken);
-    return Results.Created();
+    var id = await queue.ReRunLastEnqueuedCommand(cancellationToken);
+    return Results.Ok(new { RunId = id});
 });
 
 app.MapPost("/assemblies/global", async (
@@ -65,6 +69,20 @@ app.MapPost("/assemblies/global", async (
 {
     await CompilationTools.LoadAssembly(reference.Path, cancellationToken, globalContext: true);
     return Results.Created();
+});
+
+app.MapGet("/runs", (CommandRunningService commandRunningService) =>
+     Results.Ok(commandRunningService.RunParameters));
+
+app.MapGet("/runs/{runId}", (string runId, CommandRunningService commandRunningService) =>
+{
+    var result = commandRunningService.WaitForTask(Guid.Parse(runId), TimeSpan.FromSeconds(30));
+    if (result == null)
+    {
+        return Results.NotFound();
+    }
+    
+    return Results.Ok(new { Completed = result });
 });
 
 app.MapPost("/analyze", async (
@@ -102,3 +120,5 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 await app.RunAsync();
+
+public partial class Program {}

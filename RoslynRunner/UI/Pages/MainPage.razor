@@ -9,7 +9,7 @@
     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
         <MudTabPanel Text="Run">
             <MudItem>
-                <label for="commandType">Command Type:</label>
+                <label for="commandType">@Labels.CommandType</label>
                 <select name="commandType" @bind="commandType">
                     <option>Analyzer</option>
                     <option>Custom Processor</option>
@@ -18,45 +18,52 @@
 
 
             <MudItem>
-                <MudTextField @bind-Value="primarySolution" Label="Primary Solution" Variant="Variant.Outlined"/>
+                <MudTextField @bind-Value="primarySolution" Label=@Labels.PrimarySolution Variant="Variant.Outlined" />
             </MudItem>
             <MudItem>
-                <MudCheckBox @bind-Value="persistSolution" Label="Persist Solution"/>
+                <MudCheckBox @bind-Value="persistSolution" Label=@Labels.PersistSolution />
             </MudItem>
             <MudItem>
-                <MudTextField @bind-Value="assemblyLoadContextPath" Label="Assembly Load Context Path" Variant="Variant.Outlined"/>
+                <MudTextField @bind-Value="assemblyLoadContextPath" Label=@Labels.AssemblyLoadContextPath
+                    Variant="Variant.Outlined" />
             </MudItem>
             @if (commandType == "Analyzer")
             {
                 <MudItem>
-                    <MudTextField @bind-Value="analyzerProject" Label="Analyzer Project Path" Variant="Variant.Outlined"/>
+                    <MudTextField @bind-Value="analyzerProject" Label=@Labels.AnalyzerProjectPath
+                        Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem>
-                    <MudTextField @bind-Value="targetProject" Label="Target Project Name" Variant="Variant.Outlined"/>
+                    <MudTextField @bind-Value="targetProject" Label=@Labels.TargetProjectName Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem>
-                    <MudTextField @bind-Value="analyzerNames" Label="Analyzer Names" Variant="Variant.Outlined"/>
+                    <MudTextField @bind-Value="analyzerNames" Label=@Labels.AnalyzerNames Variant="Variant.Outlined" />
                 </MudItem>
             }
             else if (commandType == "Custom Processor")
             {
-                <MudItem>
-                    <MudTextField @bind-Value="processorSolution" Label="Processor Solution" Variant="Variant.Outlined"/>
-                </MudItem>
-                <MudItem>
-                    <MudTextField @bind-Value="processorName" Label="Processor Name" Variant="Variant.Outlined"/>
-                </MudItem>
-                <MudItem>
-                    <MudTextField @bind-Value="processorProjectName" Label="Processor Project Name" Variant="Variant.Outlined"/>
-                </MudItem>
+                <div id="customProcessorFields">
+                    <MudItem>
+                        <MudTextField @bind-Value="processorSolution" Label=@Labels.ProcessorSolution
+                            Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem>
+                        <MudTextField @bind-Value="processorName" Label=@Labels.ProcessorName Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem>
+                        <MudTextField @bind-Value="processorProjectName" Label=@Labels.ProcessorProjectName
+                            Variant="Variant.Outlined" />
+                    </MudItem>
 
-                <MudItem>
-                    <MudTextField Lines="3" @bind-Value="contextText" Label="Context (JSON)" Variant="Variant.Outlined" Multiline="true"/>
-                    @if (contextError != null)
-                    {
-                        <MudAlert Severity="Severity.Error">@contextError</MudAlert>
-                    }
-                </MudItem>
+                    <MudItem>
+                        <MudTextField Lines="3" @bind-Value="contextText" Label=@Labels.ContextJson
+                            Variant="Variant.Outlined" Multiline="true" />
+                        @if (contextError != null)
+                        {
+                            <MudAlert Severity="Severity.Error">@contextError</MudAlert>
+                        }
+                    </MudItem>
+                </div>
             }
             <MudItem>
                 <MudButton OnClick="SubmitForm" Color="Color.Primary">Submit</MudButton>
@@ -64,11 +71,13 @@
         </MudTabPanel>
         <MudTabPanel OnClick="UpdateCommandText" Text="JSON">
             <MudItem>
-                <MudTextField Lines="6" Value="@currentRunCommandJson" Label="Current Run Command JSON" ReadOnly="true" Variant="Variant.Outlined" Multiline="true"/>
+                <MudTextField Lines="6" Value="@currentRunCommandJson" Label=@Labels.CurrentRunCommandJson
+                    ReadOnly="true" Variant="Variant.Outlined" Multiline="true" />
                 <MudButton OnClick="CopyToClipboard" Variant="Variant.Filled">Copy to Clipboard</MudButton>
             </MudItem>
             <MudItem>
-                <MudTextField Lines="6" @bind-Value="loadJsonText" Label="Load JSON" Variant="Variant.Outlined" Multiline="true"/>
+                <MudTextField Lines="6" @bind-Value="loadJsonText" Label=@Labels.LoadJson Variant="Variant.Outlined"
+                    Multiline="true" />
                 <MudButton OnClick="LoadFromJson" Variant="Variant.Filled">Load</MudButton>
             </MudItem>
         </MudTabPanel>
@@ -119,25 +128,25 @@
             var serializedContext = JsonSerializer.Serialize(analyzerContext);
 
             runCommand = new RunCommand(
-                primarySolution,
-                persistSolution,
-                null,
-                "AnalyzerRunner",
-                null,
-                assemblyLoadContextPath,
-                Context: serializedContext
+            primarySolution,
+            persistSolution,
+            null,
+            "AnalyzerRunner",
+            null,
+            assemblyLoadContextPath,
+            Context: serializedContext
             );
         }
         else
         {
             runCommand = new RunCommand(
-                primarySolution,
-                persistSolution,
-                processorSolution,
-                processorName,
-                processorProjectName,
-                assemblyLoadContextPath,
-                Context: contextText
+            primarySolution,
+            persistSolution,
+            processorSolution,
+            processorName,
+            processorProjectName,
+            assemblyLoadContextPath,
+            Context: contextText
             );
         }
 
@@ -203,4 +212,20 @@
         await runQueue.Enqueue(runCommand);
     }
 
+    public class Labels
+    {
+        public const string CommandType = "Command Type:";
+        public const string PrimarySolution = "Primary Solution";
+        public const string PersistSolution = "Persist Solution";
+        public const string AssemblyLoadContextPath = "Assembly Load Context Path";
+        public const string AnalyzerProjectPath = "Analyzer Project Path";
+        public const string TargetProjectName = "Target Project Name";
+        public const string AnalyzerNames = "Analyzer Names";
+        public const string ProcessorSolution = "Processor Solution";
+        public const string ProcessorName = "Processor Name";
+        public const string ProcessorProjectName = "Processor Project Name";
+        public const string ContextJson = "Context (JSON)";
+        public const string CurrentRunCommandJson = "Current Run Command JSON";
+        public const string LoadJson = "Load JSON";
+    }
 }
