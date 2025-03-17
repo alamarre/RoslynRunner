@@ -1,0 +1,48 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>RosylnRunner.EndToEndTests</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="coverlet.collector" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="Microsoft.Playwright.NUnit" />
+        <PackageReference Include="NUnit" />
+        <PackageReference Include="NUnit.Analyzers" />
+        <PackageReference Include="NUnit3TestAdapter" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Microsoft.Playwright.NUnit"/>
+        <Using Include="NUnit.Framework"/>
+        <Using Include="System.Text.RegularExpressions"/>
+        <Using Include="System.Threading.Tasks"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageVersion Update="coverlet.collector" Version="6.0.4">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageVersion>
+      <PackageVersion Update="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+      <PackageVersion Update="Microsoft.Playwright.NUnit" Version="1.50.0" />
+      <PackageVersion Update="NUnit" Version="4.3.2" />
+      <PackageVersion Update="NUnit.Analyzers" Version="4.6.0">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageVersion>
+      <PackageVersion Update="NUnit3TestAdapter" Version="5.0.0" />
+    </ItemGroup>
+
+</Project>
