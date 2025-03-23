@@ -46,13 +46,13 @@ app.UseSwaggerUI(options =>
 });
 //}
 
-app.MapPost("/run", async (
+app.MapPost("/runs", async (
     IRunQueue queue,
     [FromBody] RunCommand runCommand,
     CancellationToken cancellationToken) =>
 {
     var id = await queue.Enqueue(runCommand, cancellationToken);
-    return Results.Ok(new { RunId = id});
+    return Results.Ok(new Run(id));
 });
 
 app.MapPost("/rerun", async (
@@ -60,7 +60,7 @@ app.MapPost("/rerun", async (
     CancellationToken cancellationToken) =>
 {
     var id = await queue.ReRunLastEnqueuedCommand(cancellationToken);
-    return Results.Ok(new { RunId = id});
+    return Results.Ok(new Run(id));
 });
 
 app.MapPost("/assemblies/global", async (
@@ -120,5 +120,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 await app.RunAsync();
+
+public record Run(Guid? RunId);
 
 public partial class Program {}

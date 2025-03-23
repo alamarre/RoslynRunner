@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Playwright;
 
-namespace RosylnRunner.EndToEndTests;
+namespace RoslynRunner.EndToEndTests;
 
 [SetUpFixture]
 public class RunnerContext

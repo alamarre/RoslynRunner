@@ -1,18 +1,54 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Playwright;
-using MudBlazor;
-using RoslynRunner;
-using RoslynRunner.UI;
+﻿using Microsoft.Playwright;
 using RoslynRunner.UI.Pages;
 
-namespace RosylnRunner.EndToEndTests;
+namespace RoslynRunner.EndToEndTests;
 
 [NonParallelizable]
 [TestFixture]
 public class Tests : PageTest
 {
     const int WaitTime = 30000;
+
     [Test]
+    public async Task ApiCanRunSampleConversion()
+    {
+        var baseDirectory = RunnerContext.BaseDirectory!;                          
+        var sampleRoot = Path.Combine(baseDirectory, "samples", "LegacyWebApp");                              
+        string targetFile = Path.Combine(sampleRoot, "ModernWebApi","Endpoints","SampleEndpoint.cs");         
+        if (File.Exists(targetFile))                                                                          
+        {                                                                                                     
+            File.Delete(targetFile);                                                                          
+        }                                                                                                     
+        Assert.That(File.Exists(targetFile), Is.False);                                                       
+        var legacyWebappSln = Path.Combine(sampleRoot, "LegacyWebApp.sln");                                   
+        Assert.That(File.Exists(legacyWebappSln), Is.True);                                                   
+
+        var legacyWebAppConverterCsproj = Path.Combine(sampleRoot, "LegacyWebAppConverter", "LegacyWebAppConverter.csproj");
+        
+        RunCommand runCommand = new(
+            ProcessorSolution: legacyWebAppConverterCsproj,
+            ProcessorName: "LegacyWebAppConverter.ConvertToMinimalApi",
+            ProcessorProjectName: "LegacyWebAppConverter",
+            PrimarySolution: legacyWebappSln,
+            PersistSolution: false
+        );
+        
+        var response = await RunnerContext.ApiRequestContext.PostAsync("/runs", new APIRequestContextOptions()
+        {
+            DataObject = runCommand
+        });
+        Assert.That(response.Status, Is.EqualTo(200));
+        var run = await response.FromJson<Run>();
+        Assert.That(run?.RunId, Is.Not.EqualTo(Guid.Empty));
+        var runResponse = await RunnerContext.ApiRequestContext.GetAsync($"/runs/{run.RunId}" );
+        
+        Assert.That(runResponse.Status, Is.EqualTo(200));
+        
+        Assert.That(File.Exists(targetFile), Is.True);
+    }
+
+    [Test]
+    [Ignore("This test is not working in GitHub Actions")]
     public async Task UiCanRunSampleConversion()
     {
         await Page.GotoAsync(RunnerContext.BaseUrl);

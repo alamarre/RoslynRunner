@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace RosylnRunner.EndToEndTests;
+namespace RoslynRunner.EndToEndTests;
 
 public class CustomWebAppFactory : WebApplicationFactory<Program> {
 

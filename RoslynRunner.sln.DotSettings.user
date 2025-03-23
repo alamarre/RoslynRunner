@@ -2,6 +2,6 @@
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AExceptionDispatchInfo_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FLibrary_003FApplication_0020Support_003FJetBrains_003FRider2024_002E3_003Fresharper_002Dhost_003FDecompilerCache_003Fdecompiler_003F292b05efaa7141b199751f5f5e932566d82000_003Fb2_003F4d6e09f0_003FExceptionDispatchInfo_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=1e37e9c8_002D3a44_002D4853_002Da605_002D4b6b220f3a39/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="UiCanRunSampleConversion" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;
   &lt;TestAncestor&gt;
-    &lt;TestId&gt;NUnit3x::0660DE6F-5205-4FA2-8666-1DE124B73445::net9.0::RosylnRunner.EndToEndTests.Tests.UiCanRunSampleConversion&lt;/TestId&gt;
+    &lt;TestId&gt;NUnit3x::0660DE6F-5205-4FA2-8666-1DE124B73445::net9.0::RoslynRunner.EndToEndTests.Tests&lt;/TestId&gt;
   &lt;/TestAncestor&gt;
 &lt;/SessionState&gt;</s:String></wpf:ResourceDictionary>

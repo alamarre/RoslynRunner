@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Playwright;
 
-namespace RosylnRunner.EndToEndTests;
+namespace RoslynRunner.EndToEndTests;
 
 public static class IApiResponseExtensions
 {
