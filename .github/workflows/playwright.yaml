@@ -18,5 +18,8 @@ jobs:
               run: dotnet build
             - name: Ensure browsers are installed
               run: pwsh RoslynRunner.EndToEndTests/bin/Debug/net9.0/playwright.ps1 install --with-deps
+            - name: Build the legacy sample
+              run: dotnet build
+              working-directory: samples/LegacyWebApp
             - name: Run your tests
               run: dotnet test

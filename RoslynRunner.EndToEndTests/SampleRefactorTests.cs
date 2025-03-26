@@ -48,7 +48,6 @@ public class Tests : PageTest
     }
 
     [Test]
-    [Ignore("This test is not working in GitHub Actions")]
     public async Task UiCanRunSampleConversion()
     {
         await Page.GotoAsync(RunnerContext.BaseUrl);
