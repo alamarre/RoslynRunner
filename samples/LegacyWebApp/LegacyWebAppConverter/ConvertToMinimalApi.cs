@@ -60,20 +60,9 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                     folders[controllerIndex] = "Endpoints";
                 }
                 
-                // Add the new document to the project with the updated file path and content
-                var addedDoc = editedProject.AddDocument(newFileName, syntaxRoot, folders: folders, filePath: newFilePath);
-                editedProject = addedDoc.Project;
+               
+                await File.WriteAllTextAsync(newFilePath, syntaxRoot.ToFullString(), cancellationToken);
             }
-        }
-        
-        solution = editedProject.Solution;
-        if (solution.Workspace.TryApplyChanges(solution))
-        {
-            logger.LogInformation($"successfully applied changes");
-        }
-        else
-        {
-            logger.LogWarning($"Failed to apply changes");
         }
     }
     

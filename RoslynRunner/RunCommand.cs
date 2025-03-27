@@ -8,8 +8,8 @@ public record RunCommand(
     bool PersistSolution,
     string? ProcessorSolution,
     string ProcessorName,
-    string? ProcessorProjectName,
-    string? AssemblyLoadContextPath,
+    string? ProcessorProjectName = null,
+    string? AssemblyLoadContextPath = null,
     List<LibraryReference>? LibraryReferences = null,
     [property: JsonConverter(typeof(JsonRawStringConverter))]
     string? Context = null);
