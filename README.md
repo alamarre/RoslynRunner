@@ -10,4 +10,4 @@ The tool is primarily useful for refactoring if you need to make a large number 
 The basic concept is that you can load your solution once, but that the Roslyn code gets recompiled for each run. You can attach the debugger to the RoslynRunner processer in the editor for your Roslyn code and debug and rerun as necessary. Since the solution loading and compilations can be cached between runs, subsequent runs can save minutes in iteration time between runs on large solutions. Analyzers and generators can be hard to debug without using tests, so although it will likely not save you as much time, it does make it simpler to debug and ensure the latest version is ran after each modification. 
 
 ## Usage
-See the [running the tool](./documentation/running-the-tool.md) documentation, or look at the [LegacyWebApp sample documentation](./samples/LegacyWebApp), for how to work with the tool.
+See the [running the tool](./documentation/running-the-tool.md) documentation, for how to work with the tool, or look at the [LegacyWebApp sample documentation](./samples/LegacyWebApp) to get a more in-depth view of how to use the tool with a semi-realistic example.
