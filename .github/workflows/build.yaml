@@ -1,9 +1,12 @@
 name: Playwright Tests
 on:
-    workflow_dispatch:
+    push:
+        branches: [ main ]
+    pull_request:
+        branches: [ main ]
 jobs:
     test:
-        timeout-minutes: 60
+        timeout-minutes: 10
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -13,10 +16,8 @@ jobs:
                   dotnet-version: 9.0.x
             - name: Build & Install
               run: dotnet build
-            - name: Ensure browsers are installed
-              run: pwsh RoslynRunner.EndToEndTests/bin/Debug/net9.0/playwright.ps1 install --with-deps
             - name: Build the legacy sample
               run: dotnet build
               working-directory: samples/LegacyWebApp
-            - name: Run your tests
-              run: dotnet test
+            - name: Run API tests
+              run: dotnet test RoslynRunner.ApiTests/RoslynRunner.ApiTests.csproj
