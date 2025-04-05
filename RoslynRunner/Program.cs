@@ -9,7 +9,8 @@ using RoslynRunner.UI;
 try
 {
     MSBuildLocator.RegisterDefaults();
-}catch(Exception){}
+}
+catch (Exception) { }
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +28,7 @@ builder.Services.AddSingleton<IRunQueue, RunQueue>();
 
 builder.Services.AddSingleton<RunCommandProcessor>();
 builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManager>();
-    
+
 builder.Services.AddSingleton<CommandRunningService>();
 builder.Services.AddHostedService<CommandRunningService>(ctx => ctx.GetRequiredService<CommandRunningService>());
 builder.AddServiceDefaults();
@@ -81,7 +82,7 @@ app.MapGet("/runs/{runId}", (string runId, CommandRunningService commandRunningS
     {
         return Results.NotFound();
     }
-    
+
     return Results.Ok(new { Completed = result });
 });
 
@@ -116,6 +117,12 @@ app.MapDelete("/solutions", (
     return Results.Empty;
 });
 
+app.MapGet("/ping", () =>
+{
+    return Results.Ok("Pong");
+});
+
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
@@ -123,4 +130,4 @@ await app.RunAsync();
 
 public record Run(Guid? RunId);
 
-public partial class Program {}
+public partial class Program { }
