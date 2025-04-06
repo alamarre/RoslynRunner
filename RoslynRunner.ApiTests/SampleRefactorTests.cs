@@ -40,8 +40,10 @@ public class SampleRefactorTests
         Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
 
         var runResult = await runResponse.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
-        Assert.That(runResult?.IsRunning, Is.False);
         Assert.That(runResult?.Errors, Is.Empty);
+        Assert.That(runResult?.Output.Single(), Is.EqualTo($"Created file: {Path.GetFullPath(targetFile)}"));
+        Assert.That(runResult?.IsRunning, Is.False);
+
         Assert.That(File.Exists(targetFile), Is.True);
     }
 }

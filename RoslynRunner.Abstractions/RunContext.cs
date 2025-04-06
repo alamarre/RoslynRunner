@@ -6,8 +6,8 @@ public class RunContext(Guid jobId)
 {
     public bool IsRunning { get; set; } = true;
     public Guid JobId => jobId;
-    public List<object> Errors = new();
-    public List<object> Output = new();
+    public List<string> Errors { get; set; } = new();
+    public List<string> Output { get; set; } = new();
 }
 
 public static class RunContextAccessor
