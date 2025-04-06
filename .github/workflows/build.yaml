@@ -19,9 +19,6 @@ jobs:
           dotnet-version: 9.0.x
       - name: Build the project
         run: dotnet build RoslynRunner.sln
-      - name: Build the legacy sample
-        run: dotnet build
-        working-directory: samples/LegacyWebApp
 
   test:
     runs-on: ubuntu-latest
@@ -31,6 +28,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+      - name: Build the legacy sample
+        run: dotnet build
+        working-directory: samples/LegacyWebApp
       - name: Run API tests
         run: dotnet test RoslynRunner.ApiTests/RoslynRunner.ApiTests.csproj --logger "console;verbosity=detailed"
 
