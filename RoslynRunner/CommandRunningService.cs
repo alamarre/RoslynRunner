@@ -46,7 +46,7 @@ public class CommandRunningService(
                 logger.LogError("failed processing task {error}", e);
                 if (runContext is not null && runId.HasValue && _taskRuns.TryGetValue(runId.Value, out var tcs))
                 {
-                    runContext.Errors.Add(e.ToString());
+                    runContext.Errors.Add($"Error processing task: {e.Message}\nStack Trace: {e.StackTrace}\nInner Exception: {e.InnerException?.Message}");
                     tcs.TrySetResult(runContext); // Mark as finished without throwing
                 }
             }
