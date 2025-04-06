@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace RoslynRunner.ApiTests;
@@ -7,7 +8,10 @@ public class AppContext
 {
     public static CustomWebAppFactory? App;
 
-
+    public static JsonSerializerOptions JsonSerializerOptions { get; } = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
     public static string? BaseDirectory = null;
 
     public static string BaseUrl => HttpClient!.BaseAddress!.ToString();

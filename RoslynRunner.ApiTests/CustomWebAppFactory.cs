@@ -1,25 +1,35 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace RoslynRunner.ApiTests;
 
-public class CustomWebAppFactory : WebApplicationFactory<Program> {
+public class CustomWebAppFactory : WebApplicationFactory<Program>
+{
 
     public Uri? BaseAddress { get; set; }
     // configure Kestrel from https://danieldonbavand.com/2022/06/13/using-playwright-with-the-webapplicationfactory-to-test-a-blazor-application/
-    protected override IHost CreateHost( IHostBuilder builder ) {
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        // Add console logging to capture logs in GitHub Actions
+        builder.ConfigureLogging(logging =>
+        {
+            logging.ClearProviders();
+            logging.AddConsole();
+        });
+
         // Create the host for TestServer now before we
         // modify the builder to use Kestrel instead.
         var testHost = builder.Build();
 
         // Modify the host builder to use Kestrel instead
         // of TestServer so we can listen on a real address.
-
-        builder.ConfigureWebHost( webHostBuilder => webHostBuilder.UseKestrel() );
+        builder.ConfigureWebHost(webHostBuilder => webHostBuilder.UseKestrel());
 
         // Create and start the Kestrel server before the test server,
         // otherwise due to the way the deferred host builder works
@@ -39,8 +49,8 @@ public class CustomWebAppFactory : WebApplicationFactory<Program> {
         var addresses = server.Features.Get<IServerAddressesFeature>();
 
         ClientOptions.BaseAddress = addresses!.Addresses
-            .Select( x => new Uri( x ) )
-            .Last( x => x.Scheme == "http" );
+            .Select(x => new Uri(x))
+            .Last(x => x.Scheme == "http");
 
         // Al: the base address of the client wasn't updating so I added this as another way to get it
         BaseAddress = ClientOptions.BaseAddress;

@@ -37,13 +37,13 @@ public class MinimalApiGenerator : IIncrementalGenerator
                 return methodDeclarationSyntax.AttributeLists.Any(al =>
                     al.Attributes.Any(a => a.Name.ToString().EndsWith("Api")));
             },
-            static (context, ct) => (MethodDeclarationSyntax)context.Node 
+            static (context, ct) => (MethodDeclarationSyntax)context.Node
         );
-        
+
         IncrementalValueProvider<(Compilation, ImmutableArray<MethodDeclarationSyntax>)> compilationAndNodes
             = context.CompilationProvider.Combine(syntaxProvider.Collect());
 
-        context.RegisterSourceOutput(compilationAndNodes, (ctx, components ) =>
+        context.RegisterSourceOutput(compilationAndNodes, (ctx, components) =>
         {
             var (compilation, methods) = components;
             List<IMethodSymbol> methodSymbols = new List<IMethodSymbol>();
@@ -56,14 +56,14 @@ public class MinimalApiGenerator : IIncrementalGenerator
 
             SymbolDisplayFormat format = SymbolDisplayFormat.FullyQualifiedFormat;
             var grouped = methodSymbols.GroupBy(m => m.ContainingSymbol, SymbolEqualityComparer.Default);
-           
-            string registrationBody = string.Join("\n         ", grouped.Select(g => 
+
+            string registrationBody = string.Join("\n         ", grouped.Select(g =>
                 @$"services.AddSingleton<global::ModernWebApi.Endpoints.IEndpointMapper, {g!.Key!.ToDisplayString(format)}>();"));
 
             StringBuilder sb = new StringBuilder();
             foreach (var group in grouped)
             {
-                
+
                 sb.AppendLine($"namespace {group.Key.ContainingNamespace.ToDisplayString()} {{");
                 sb.AppendLine($"    public partial class {group.Key.Name.ToString()} : global::ModernWebApi.Endpoints.IEndpointMapper  {{");
                 sb.AppendLine("        public void MapEndpoints(IEndpointRouteBuilder builder) {");
@@ -98,7 +98,7 @@ public partial class AutomaticEndpoints {{
 {sb.ToString()}
                 ";
             ctx.AddSource("AutoEndpoints.g.cs", SourceText.From(result, Encoding.UTF8));
-            
+
         });
 
     }

@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
+using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
 
 namespace LegacyWebAppConverter;
@@ -28,7 +29,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             var semanticModel = compilation.GetSemanticModel(syntaxRoot.SyntaxTree);
 
             var controllers = GetControllersWithAttribute(syntaxRoot, semanticModel, controllerAttribute);
-            
+
             foreach (var controller in controllers)
             {
                 var httpMethods = GetHttpMethods(controller, semanticModel);
@@ -38,7 +39,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                 syntaxRoot = ReplaceNamespace(syntaxRoot);
 
                 syntaxRoot = Formatter.Format(syntaxRoot, solution.Workspace);
-                
+
                 // Get the current file path and replace the directory and filename
                 var oldFilePath = document.FilePath!;  // Assuming document.FilePath is not null
 
@@ -59,13 +60,13 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                     var controllerIndex = folders.IndexOf("Controllers");
                     folders[controllerIndex] = "Endpoints";
                 }
-                
-               
+
+                RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(newFilePath)}");
                 await File.WriteAllTextAsync(newFilePath, syntaxRoot.ToFullString(), cancellationToken);
             }
         }
     }
-    
+
     private SyntaxNode ReplaceNamespace(SyntaxNode syntaxRoot)
     {
         var namespaceDeclaration = syntaxRoot.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
@@ -166,7 +167,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             .ToList();
 
         var transformedBody = method.Body.ToFullString();
-    
+
         // Replace each return statement with appropriate TypedResults method
         foreach (var returnStatement in returnStatements)
         {
@@ -187,7 +188,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
 
         return transformedBody;
     }
-    
+
     private string GetTypedResultForReturnType(ITypeSymbol returnType)
     {
         // Map return types to appropriate TypedResults method
