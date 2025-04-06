@@ -1,9 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>RoslynRunner</ToolCommandName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RoslynRunner.Core\RoslynRunner.Core.csproj" />
     <ProjectReference Include="..\RoslynRunner.ServiceDefaults\RoslynRunner.ServiceDefaults.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="MudBlazor" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <PackageReference Include="Microsoft.Build.Locator" />

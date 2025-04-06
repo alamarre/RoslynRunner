@@ -6,6 +6,7 @@ namespace RoslynRunner.ApiTests;
 public class SampleRefactorTests
 {
 
+    public record RunResponse(bool Completed);
     [Test]
     public async Task ApiCanRunSampleConversion()
     {
@@ -33,11 +34,14 @@ public class SampleRefactorTests
         var response = await AppContext.HttpClient.PostAsJsonAsync("http://localhost:5000/runs", runCommand);
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
         var run = await response.Content.ReadFromJsonAsync<Run>();
+        Assert.That(run, Is.Not.Null);
         Assert.That(run?.RunId, Is.Not.EqualTo(Guid.Empty));
         var runResponse = await AppContext.HttpClient.GetAsync($"http://localhost:5000/runs/{run.RunId}");
 
         Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
 
+        var runResult = await runResponse.Content.ReadFromJsonAsync<RunResponse>(AppContext.JsonSerializerOptions);
+        Assert.That(runResult?.Completed, Is.True);
         Assert.That(File.Exists(targetFile), Is.True);
     }
 }

@@ -51,9 +51,9 @@ public class CommandRunningService(
             }
         }
     }
-    
+
     public List<RunParameters> RunParameters => _runParameters.ToList();
-    
+
     public bool? WaitForTask(Guid id, TimeSpan timeout)
     {
         if (!_taskRuns.TryGetValue(id, out var tcs))
@@ -62,6 +62,17 @@ public class CommandRunningService(
         }
 
         return tcs.Task.Wait(timeout) && tcs.Task.Result;
+    }
+
+    public async Task<bool?> WaitForTaskAsync(Guid id, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        if (!_taskRuns.TryGetValue(id, out var tcs))
+        {
+            return null;
+        }
+
+        var result = await tcs.Task.WaitAsync(timeout, cancellationToken);
+        return result;
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
