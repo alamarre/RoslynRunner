@@ -46,7 +46,7 @@ jobs:
           dotnet-version: 9.0.x
       - name: Extract version from tag
         id: extract_version
-        run: echo "::set-output name=version::${GITHUB_REF#refs/tags/v}"
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
       - name: Pack the tool
         run: dotnet pack RoslynRunner/RoslynRunner.csproj -c Release -p:Version=${{ steps.extract_version.outputs.version }}
       - name: Publish to NuGet
