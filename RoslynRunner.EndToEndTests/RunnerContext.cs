@@ -10,7 +10,6 @@ public class RunnerContext : RoslynRunner.ApiTests.AppContext
 
     public static IAPIRequestContext ApiRequestContext { get; private set; } = null!;
 
-    private static HttpClient HttpClient { get; set; } = null!;
     [OneTimeSetUp]
     public override async Task Setup()
     {
