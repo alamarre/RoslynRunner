@@ -1,12 +1,11 @@
 using System;
 using System.Net.Http.Json;
+using RoslynRunner.Abstractions;
 
 namespace RoslynRunner.ApiTests;
 
 public class SampleRefactorTests
 {
-
-    public record RunResponse(bool Completed);
     [Test]
     public async Task ApiCanRunSampleConversion()
     {
@@ -40,8 +39,9 @@ public class SampleRefactorTests
 
         Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
 
-        var runResult = await runResponse.Content.ReadFromJsonAsync<RunResponse>(AppContext.JsonSerializerOptions);
-        Assert.That(runResult?.Completed, Is.True);
+        var runResult = await runResponse.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
+        Assert.That(runResult?.IsRunning, Is.False);
+        Assert.That(runResult?.Errors, Is.Empty);
         Assert.That(File.Exists(targetFile), Is.True);
     }
 }

@@ -8,6 +8,8 @@ using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
 using RoslynRunner.UI;
 using Microsoft.AspNetCore.Builder.Extensions;
+using System.Text.Json;
+using Ardalis.Result.AspNetCore;
 
 try
 {
@@ -83,12 +85,7 @@ app.MapGet("/runs", (CommandRunningService commandRunningService) =>
 app.MapGet("/runs/{runId}", async (Guid runId, CommandRunningService commandRunningService, CancellationToken cancellationToken) =>
 {
     var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(30), cancellationToken);
-    if (result == null)
-    {
-        return Results.NotFound();
-    }
-
-    return Results.Ok(new { Completed = result });
+    return result.ToMinimalApiResult();
 });
 
 app.MapPost("/analyze", async (
@@ -176,7 +173,7 @@ public static class RoslynRunnerTool
         Guid runId = await queue.Enqueue(context.ToRunCommand(), cancellationToken);
 
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
-        return $"anyalyzer was run";
+        return JsonSerializer.Serialize(result.Value);
     }
 }
 

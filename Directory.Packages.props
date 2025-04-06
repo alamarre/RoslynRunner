@@ -1,5 +1,7 @@
 <Project>
   <ItemGroup>
+    <PackageVersion Include="Ardalis.Result" Version="10.1.0" />
+    <PackageVersion Include="Ardalis.Result.AspNetCore" Version="10.1.0" />
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.1.0" />
     <PackageVersion Include="AutomaticGraphLayout.Drawing" Version="1.1.12" />
     <PackageVersion Include="DotNetGraph" Version="3.2.0" />

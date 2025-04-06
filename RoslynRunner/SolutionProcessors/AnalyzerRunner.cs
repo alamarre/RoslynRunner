@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.MSBuild;
+using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
 
 namespace RoslynRunner.SolutionProcessors;
@@ -52,10 +53,12 @@ public class AnalyzerRunner : ISolutionProcessor
         logger.LogInformation($"analyzers found {analyzers.Count}");
         var targetProject = solution.Projects.FirstOrDefault(p => p.Name == analyzerContext.TargetProject);
         var projectCompilation = await targetProject!.GetCompilationAsync(cancellationToken);
+        var runContext = RunContextAccessor.RunContext;
         if (diagnosticAnalyzers.Any())
         {
             var diagnosticCompilation = projectCompilation!.WithAnalyzers(diagnosticAnalyzers.ToImmutableArray());
             var diagnostics = await diagnosticCompilation.GetAllDiagnosticsAsync(cancellationToken);
+            runContext.Output.AddRange(diagnostics.Select(d => d.ToString()));
         }
 
         var incrementalGenerators = analyzers.Where(a => a is IIncrementalGenerator)
@@ -63,5 +66,7 @@ public class AnalyzerRunner : ISolutionProcessor
             .Select(a => a.AsSourceGenerator());
         GeneratorDriver driver = CSharpGeneratorDriver.Create(incrementalGenerators);
         var nextStep = driver.RunGenerators(projectCompilation!);
+        var runResult = nextStep.GetRunResult();
+        runContext.Output.AddRange(runResult.Diagnostics.Select(d => d.ToString()));
     }
 }
