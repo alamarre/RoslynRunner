@@ -25,7 +25,7 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
 
         var (results, allMethods) =
             await InvocationTreeBuilder.BuildInvocationTreeAsync(
-                startingType: (INamedTypeSymbol)symbol,
+                startingType: (INamedTypeSymbol)symbol!,
                 solution: solution,
                 methodFilter: parameters.MethodFilter,
                 maxLimit: parameters.MaxImplementations,
@@ -35,8 +35,8 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
             foreach (var diagram in parameters.Diagrams)
             {
                 var diagramMethods = allMethods;
-               
-                if(!Directory.Exists(diagram.OutputPath))
+
+                if (!Directory.Exists(diagram.OutputPath))
                 {
                     Directory.CreateDirectory(diagram.OutputPath);
                 }
@@ -44,7 +44,8 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                 if (diagram.InclusivePruneFilter != null)
                 {
                     var root = results.Methods.First();
-                    diagramMethods = DedupingQueueRunner.ProcessResults((InvocationMethod i) => {
+                    diagramMethods = DedupingQueueRunner.ProcessResults((InvocationMethod i) =>
+                    {
                         bool selfIsSafe = (new[] { i }).AsQueryable().Any(diagram.InclusivePruneFilter);
                         if (!selfIsSafe)
                         {
@@ -88,9 +89,9 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     }
                     else
                     {
-                        var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where( c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
+                        var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
                         var result = diagram.DiagramType == "dot"
-                            ? await  InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods)
+                            ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods)
                             : InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
 
 

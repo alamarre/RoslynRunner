@@ -110,6 +110,10 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         {
             processor = new AnalyzerRunner();
         }
+        else if (runCommand.ProcessorName == "SolutionLoader")
+        {
+            processor = new NullActionLoader();
+        }
 
         if (processor == null)
         {

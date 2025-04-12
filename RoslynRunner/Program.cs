@@ -10,6 +10,7 @@ using RoslynRunner.UI;
 using Microsoft.AspNetCore.Builder.Extensions;
 using System.Text.Json;
 using Ardalis.Result.AspNetCore;
+using RoslynRunner.Runs;
 
 try
 {
@@ -54,22 +55,7 @@ app.UseSwaggerUI(options =>
 });
 //}
 
-app.MapPost("/runs", async (
-    IRunQueue queue,
-    [FromBody] RunCommand runCommand,
-    CancellationToken cancellationToken) =>
-{
-    var id = await queue.Enqueue(runCommand, cancellationToken);
-    return Results.Ok(new Run(id));
-});
-
-app.MapPost("/rerun", async (
-    IRunQueue queue,
-    CancellationToken cancellationToken) =>
-{
-    var id = await queue.ReRunLastEnqueuedCommand(cancellationToken);
-    return Results.Ok(new Run(id));
-});
+app.MapRunEndpoints();
 
 app.MapPost("/assemblies/global", async (
     [FromBody] LibraryReference reference,
@@ -79,15 +65,6 @@ app.MapPost("/assemblies/global", async (
     return Results.Created();
 });
 
-app.MapGet("/runs", (CommandRunningService commandRunningService) =>
-     Results.Ok(commandRunningService.RunParameters));
-
-app.MapGet("/runs/{runId}", async (Guid runId, CommandRunningService commandRunningService, CancellationToken cancellationToken) =>
-{
-    var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(30), cancellationToken);
-    return result.ToMinimalApiResult();
-});
-
 app.MapPost("/analyze", async (
     IRunQueue queue,
     [FromBody] RunCommand<AnalyzerContext> analyzeCommand,
@@ -95,13 +72,6 @@ app.MapPost("/analyze", async (
 {
     await queue.Enqueue(analyzeCommand.ToRunCommand(), cancellationToken);
     return Results.Created();
-});
-
-app.MapDelete("/run", (
-    ICancellationTokenManager cancellationTokenManager) =>
-{
-    cancellationTokenManager.CancelCurrentTask();
-    return Results.Empty;
 });
 
 app.MapGet("/solutions", (RunCommandProcessor runCommandProcessor) =>
@@ -139,15 +109,26 @@ public record Run(Guid? RunId);
 public static class RoslynRunnerTool
 {
     [McpServerTool]
-    [Description("Loads a solution for analysis")]
+    [Description("Loads a solution to be cached for future analysis")]
     public static async Task<string> LoadSolution(
         IRunQueue queue,
-        [Description("The absolute path to the solution to load")] string solutionPath)
+        CommandRunningService commandRunningService,
+        [Description("The absolute path of the project or solution to load")] string solutionPath,
+        [Description("Whether to preload symbols in the cache")] bool cacheSymbols,
+        [Description("The name of the project to cache symbols from")] string? projectName,
+        CancellationToken cancellationToken)
     {
+        var context = new RunCommand(
+            PrimarySolution: solutionPath,
+            PersistSolution: true,
+            ProcessorSolution: null,
+            ProcessorName: "SolutionLoader",
+            AssemblyLoadContextPath: null,
+            Context: null);
+        Guid runId = await queue.Enqueue(context, cancellationToken);
 
-        await Task.Delay(1000);
-        return $"loaded {solutionPath}";
-
+        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
+        return JsonSerializer.Serialize(result.Value);
     }
 
     [McpServerTool]

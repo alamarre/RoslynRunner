@@ -26,24 +26,16 @@ public class CachedSymbolFinder
 {
     public SymbolCache SymbolCache { get; }
 
-    public static async Task<CachedSymbolFinder> FromCache(Project startingProject,
-        Func<Document, bool>? filterFunction = null,
+    public static async Task<CachedSymbolFinder> FromCache(Solution solution,
+        string? projectName = null,
         CancellationToken cancellationToken = default)
     {
-        if(MemoryCache.Cache.TryGetValue("symbol-cache", out var cached) 
-            && cached is Dictionary<Project, SymbolCache> cachedDict
-            && cachedDict.TryGetValue(startingProject, out SymbolCache? symbolCache)) {
-            return new CachedSymbolFinder(symbolCache);
-        }
-
-        symbolCache = await startingProject.BuildSymbolCacheAsync(filterFunction, cancellationToken);
-       
-        if (cached is not Dictionary<Project, SymbolCache> cacheDict)
+        var resultCache = await MemoryCache.GetOrAddAsync<string, string, SymbolCache>("solution_cache", solution.FilePath!, async () =>
         {
-            MemoryCache.Cache["symbol-cache"] = cacheDict = new();
-        }
-        cacheDict[startingProject] = symbolCache;
-        return new CachedSymbolFinder(symbolCache);
+            var cache = await solution.BuildSymbolCacheAsync(projectName, cancellationToken);
+            return cache;
+        });
+        return new CachedSymbolFinder(resultCache);
     }
 
     public CachedSymbolFinder(SymbolCache symbolCache)
@@ -99,8 +91,8 @@ public class CachedSymbolFinder
 public static class ProjectExtensions
 {
     public static async Task<SymbolCache> BuildSymbolCacheAsync(
-        this Project startingProject,
-        Func<Document, bool>? filterFunction = null,
+        this Solution solution,
+        string? projectName,
         CancellationToken cancellationToken = default)
     {
         Dictionary<IMethodSymbol, MethodData> methodCache = new(SymbolEqualityComparer.Default);
@@ -108,7 +100,33 @@ public static class ProjectExtensions
         Dictionary<string, List<ISymbol>> typeImplementations = new();
         Dictionary<IOperation, List<IMethodSymbol>> callerCache = new();
         Dictionary<string, INamedTypeSymbol> metadataNameCache = new();
-        foreach (Project project in startingProject.Solution.Projects)
+        var projects = solution.Projects;
+        if (projectName is not null)
+        {
+            var startingProject = solution.Projects.FirstOrDefault(p => p.Name == projectName);
+            if (startingProject is null)
+            {
+                throw new ArgumentException($"Project {projectName} not found");
+            }
+            // get all transitive project references
+            var projectReferences = startingProject.ProjectReferences;
+            var transitiveReferences = DedupingQueueRunner.ProcessResults<ProjectReference>(projectRef =>
+            {
+                var project = solution.Projects.FirstOrDefault(p => p.Id == projectRef.ProjectId);
+                if (project is null)
+                {
+                    return Enumerable.Empty<ProjectReference>();
+                }
+                return project.ProjectReferences;
+            }, projectReferences.ToArray());
+
+            projects = transitiveReferences
+                .Select(projectRef => solution.GetProject(projectRef.ProjectId))
+                .Where(p => p != null)
+                .Cast<Project>()
+                .ToList();
+        }
+        foreach (Project project in projects)
         {
             Compilation? compilation = await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
             if (compilation is null)
@@ -118,7 +136,7 @@ public static class ProjectExtensions
 
             // Use global namespace traversal to get all types.
             List<INamedTypeSymbol> allTypes = GetAllTypes(compilation);
-            foreach(var type in allTypes)
+            foreach (var type in allTypes)
             {
                 metadataNameCache[CachedSymbolFinder.GetFullyQualifiedMetadataName(type)] = type;
             }
@@ -157,7 +175,7 @@ public static class ProjectExtensions
                     }
                     return [];
                 }, namedType.BaseType);
-                
+
 
                 // Process each method declared on the type.
                 foreach (IMethodSymbol methodSymbol in namedType.GetMembers().OfType<IMethodSymbol>())
@@ -170,14 +188,6 @@ public static class ProjectExtensions
 
                     SyntaxReference syntaxReference = syntaxReferences[0];
                     SyntaxNode syntaxNode = await syntaxReference.GetSyntaxAsync(cancellationToken).ConfigureAwait(false);
-                    if (filterFunction is not null)
-                    {
-                        Document? document = project.GetDocument(syntaxNode.SyntaxTree);
-                        if (document is null || !filterFunction(document))
-                        {
-                            continue;
-                        }
-                    }
 
                     SemanticModel semanticModel = compilation.GetSemanticModel(syntaxNode.SyntaxTree);
                     IOperation? methodOperation = semanticModel.GetOperation(syntaxNode, cancellationToken);
