@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
+using RoslynRunner.Utilities.InvocationTrees;
 
 namespace RoslynRunner;
 
@@ -109,6 +110,10 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         else if (runCommand.ProcessorName == nameof(AnalyzerRunner))
         {
             processor = new AnalyzerRunner();
+        }
+        else if (runCommand.ProcessorName == "CallChains")
+        {
+            processor = new InvocationTreeProcessor();
         }
         else if (runCommand.ProcessorName == "SolutionLoader")
         {

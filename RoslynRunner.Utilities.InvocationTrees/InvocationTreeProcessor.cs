@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
-public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcessorParameters>
+public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcessorParameters>, ISolutionProcessor
 {
     public async Task ProcessSolution(Solution solution, InvocationTreeProcessorParameters? parameters, ILogger logger,
         CancellationToken cancellationToken)
@@ -23,13 +23,31 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
         var symbol = await FindSymbol(solution, parameters.StartingSymbol,
             cancellationToken);
 
-        var (results, allMethods) =
-            await InvocationTreeBuilder.BuildInvocationTreeAsync(
+        InvocationRoot? results = null;
+        List<InvocationMethod> allMethods = new();
+        if (parameters.UseCache)
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            (results, allMethods) = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
+                cachedSymbolFinder: cache,
                 startingType: (INamedTypeSymbol)symbol!,
                 solution: solution,
                 methodFilter: parameters.MethodFilter,
                 maxLimit: parameters.MaxImplementations,
                 cancellationToken: cancellationToken);
+        }
+        else
+        {
+            (results, allMethods) =
+                await InvocationTreeBuilder.BuildInvocationTreeAsync(
+                    startingType: (INamedTypeSymbol)symbol!,
+                    solution: solution,
+                    methodFilter: parameters.MethodFilter,
+                    maxLimit: parameters.MaxImplementations,
+                    cancellationToken: cancellationToken);
+
+        }
+
         if (parameters.Diagrams != null)
         {
             foreach (var diagram in parameters.Diagrams)
@@ -58,6 +76,12 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     }, [root]).ToList();
 
                 }
+                var extension = diagram.DiagramType switch
+                {
+                    "dot" => ".dot",
+                    "JSON" => ".json",
+                    _ => ".md"
+                };
                 HashSet<IMethodSymbol> validMethods = new(diagramMethods.Select(m => m.MethodSymbol), SymbolEqualityComparer.Default);
                 if (diagram.Filter != null)
                 {
@@ -69,17 +93,14 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                         foreach (var method in filteredMethods)
                         {
                             var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), new[] { method });
-                            var result = diagram.DiagramType == "dot"
-                                ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods, method)
-                                : InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
+                            var result = await GetDiagram(diagram, callChains);
 
-                            var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
                             var fileName = method.MethodSymbol.ContainingType.ToDisplayString() + "." +
                                            method.MethodSymbol.Name + extension;
                             fileName = fileName.Replace('<', '_').Replace('>', '_');
                             try
                             {
-                                File.WriteAllText(Path.Combine(diagram.OutputPath, fileName), result);
+                                await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, fileName), result);
                             }
                             catch (Exception e)
                             {
@@ -90,28 +111,28 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     else
                     {
                         var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
-                        var result = diagram.DiagramType == "dot"
-                            ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(callChains, diagram.WriteAllMethods)
-                            : InvocationTreeMermaidWriter.GetMermaidDagForCallers(callChains);
-
-
-                        var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
-
-                        File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + extension, result);
+                        var result = await GetDiagram(diagram, callChains);
+                        await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
                     }
                 }
                 else
                 {
-                    var result = diagram.DiagramType == "dot"
-                            ? await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods)
-                            : InvocationTreeMermaidWriter.GetMermaidDagForCallers(diagramMethods);
+                    string result = await GetDiagram(diagram, diagramMethods);
 
-
-                    var extension = diagram.DiagramType == "dot" ? ".dot" : ".md";
-                    File.WriteAllText(Path.Combine(diagram.OutputPath, diagram.Name) + extension, result);
+                    await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
                 }
             }
         }
+    }
+
+    private static async Task<string> GetDiagram(InvocationDiagram diagram, IEnumerable<InvocationMethod> diagramMethods)
+    {
+        return diagram.DiagramType switch
+        {
+            "dot" => await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods),
+            "JSON" => InvocationTreeJsonWriter.WriteInvocationTreeToJson(diagramMethods),
+            _ => InvocationTreeMermaidWriter.GetMermaidDagForCallers(diagramMethods)
+        };
     }
 
     public static async Task<ISymbol?> FindSymbol(Solution solution, string fullyQualified,
@@ -126,5 +147,16 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
 
         return (await SymbolFinder.FindSourceDeclarationsAsync(solution, shortName, false, cancellationToken))
             .FirstOrDefault(s => s.ToDisplayString() == fullyQualified);
+    }
+
+    public async Task ProcessSolution(Solution solution, string? context, ILogger logger, CancellationToken cancellationToken)
+    {
+        if (context == null)
+        {
+            throw new Exception("context must be an InvocationTreeProcessorParameters");
+        }
+
+        var parameters = JsonSerializer.Deserialize<InvocationTreeProcessorParameters>(context);
+        await ProcessSolution(solution, parameters, logger, cancellationToken);
     }
 }

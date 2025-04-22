@@ -42,7 +42,7 @@ public static class InvocationTreeBuilder
             }
 
             var methodNodes = node.DescendantNodesAndSelf().OfType<MethodDeclarationSyntax>();
-            if(methodFilter != null)
+            if (methodFilter != null)
             {
                 methodNodes = methodNodes.Where(m => m.Identifier.ValueText == methodFilter);
             }
@@ -140,6 +140,88 @@ public static class InvocationTreeBuilder
         }
 
         return (new InvocationRoot(new List<InvocationMethod>()), new List<InvocationMethod>());
+    }
+
+    public static async Task<(InvocationRoot, List<InvocationMethod>)> BuildInvocationTreeWithCacheAsync(
+        CachedSymbolFinder cachedSymbolFinder,
+        ISymbol startingType,
+        Solution solution,
+        string? methodFilter = null,
+        int? maxLimit = null,
+        Dictionary<IMethodSymbol, InvocationMethod>? startingMethodCache = null,
+        CancellationToken cancellationToken = default)
+    {
+        Dictionary<IMethodSymbol, InvocationMethod> methodCache = startingMethodCache ?? new(SymbolEqualityComparer.Default);
+        var methodSymbols = cachedSymbolFinder.SymbolCache.MethodCache.Keys.Where(m => m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == startingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+
+        if (methodFilter != null)
+        {
+            methodSymbols = methodSymbols.Where(m => m.Name == methodFilter);
+        }
+        var initialMethods = methodSymbols.Select(m =>
+            new InvocationMethod(m, new List<InvocationMethod>(), new List<InvocationMethod>(),
+                new Dictionary<IInvocationOperation, InvocationMethod>())).ToArray();
+
+        var allMethods = await DedupingQueueRunner.ProcessResultsAsync<InvocationMethod>(
+            async (InvocationMethod method) =>
+            {
+                List<InvocationMethod> newMethods = new();
+                var methodSymbol = method.MethodSymbol;
+
+                if (await methodSymbol.Locations.First().GetSyntaxNodeAsync(cancellationToken)
+                    is not MethodDeclarationSyntax currentMethodNode)
+                {
+                    return newMethods;
+                }
+                if (cachedSymbolFinder.SymbolCache.ImplementationCache.TryGetValue(methodSymbol, out var implementations)
+                 && implementations is not null
+                 && (maxLimit is null || implementations.Count() < maxLimit))
+                {
+                    foreach (var implementationSymbol in implementations)
+                    {
+                        if (!methodCache.TryGetValue(implementationSymbol, out var invocationMethod))
+                        {
+                            invocationMethod = new InvocationMethod(implementationSymbol,
+                                new List<InvocationMethod> { method },
+                                new List<InvocationMethod>(),
+                                new Dictionary<IInvocationOperation, InvocationMethod>());
+                            methodCache.Add(implementationSymbol, invocationMethod);
+                            newMethods.Add(invocationMethod);
+                        }
+                        else
+                        {
+                            invocationMethod.Callers.Add(method);
+                        }
+
+                        method.Implementations.Add(invocationMethod);
+                    }
+                }
+
+                var operations = cachedSymbolFinder.SymbolCache.MethodCache[methodSymbol].InvokedOperations.OfType<IInvocationOperation>().ToArray();
+                Dictionary<IInvocationOperation, InvocationMethod> invocationMethods = new();
+                foreach (var operation in operations)
+                {
+                    if (!methodCache.TryGetValue(operation.TargetMethod, out var invocationMethod))
+                    {
+                        invocationMethod = new InvocationMethod(operation.TargetMethod,
+                            new List<InvocationMethod> { method },
+                            new List<InvocationMethod>(),
+                            new Dictionary<IInvocationOperation, InvocationMethod>());
+                        methodCache.Add(operation.TargetMethod, invocationMethod);
+                        newMethods.Add(invocationMethod);
+                    }
+                    else
+                    {
+                        invocationMethod.Callers.Add(method);
+                    }
+
+                    method.InvokedMethods.Add(operation, invocationMethod);
+                }
+
+                return newMethods;
+            }, initialMethods);
+
+        return (new InvocationRoot(initialMethods.ToList()), allMethods.ToList());
     }
 
     /// <summary>

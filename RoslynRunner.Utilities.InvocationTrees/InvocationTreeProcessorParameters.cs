@@ -10,7 +10,8 @@ public record InvocationTreeProcessorParameters(
     string StartingSymbol,
     InvocationDiagram[]? Diagrams,
     string? MethodFilter = null,
-    int? MaxImplementations = null);
+    int? MaxImplementations = null,
+    bool UseCache = false);
 
 public record InvocationDiagram(
     string OutputPath,

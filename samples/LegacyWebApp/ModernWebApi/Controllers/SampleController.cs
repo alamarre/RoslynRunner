@@ -10,4 +10,15 @@ public class SampleController : ControllerBase
     {
         return "pong";
     }
+
+    [HttpGet]
+    public string MethodWithDependencies()
+    {
+        return GetDependencyResponse();
+    }
+
+    private string GetDependencyResponse()
+    {
+        return "DependencyResponse";
+    }
 }
