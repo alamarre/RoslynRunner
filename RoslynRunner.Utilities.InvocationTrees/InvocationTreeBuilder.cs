@@ -196,26 +196,26 @@ public static class InvocationTreeBuilder
                         method.Implementations.Add(invocationMethod);
                     }
                 }
-
-                var operations = cachedSymbolFinder.SymbolCache.MethodCache[methodSymbol].InvokedOperations.OfType<IInvocationOperation>().ToArray();
-                Dictionary<IInvocationOperation, InvocationMethod> invocationMethods = new();
-                foreach (var operation in operations)
+                if (cachedSymbolFinder.SymbolCache.MethodCache.TryGetValue(methodSymbol, out var methodSymbolCache))
                 {
-                    if (!methodCache.TryGetValue(operation.TargetMethod, out var invocationMethod))
+                    foreach (var operation in methodSymbolCache.InvokedOperations.OfType<IInvocationOperation>())
                     {
-                        invocationMethod = new InvocationMethod(operation.TargetMethod,
-                            new List<InvocationMethod> { method },
-                            new List<InvocationMethod>(),
-                            new Dictionary<IInvocationOperation, InvocationMethod>());
-                        methodCache.Add(operation.TargetMethod, invocationMethod);
-                        newMethods.Add(invocationMethod);
-                    }
-                    else
-                    {
-                        invocationMethod.Callers.Add(method);
-                    }
+                        if (!methodCache.TryGetValue(operation.TargetMethod, out var invocationMethod))
+                        {
+                            invocationMethod = new InvocationMethod(operation.TargetMethod,
+                                new List<InvocationMethod> { method },
+                                new List<InvocationMethod>(),
+                                new Dictionary<IInvocationOperation, InvocationMethod>());
+                            methodCache.Add(operation.TargetMethod, invocationMethod);
+                            newMethods.Add(invocationMethod);
+                        }
+                        else
+                        {
+                            invocationMethod.Callers.Add(method);
+                        }
 
-                    method.InvokedMethods.Add(operation, invocationMethod);
+                        method.InvokedMethods.Add(operation, invocationMethod);
+                    }
                 }
 
                 return newMethods;

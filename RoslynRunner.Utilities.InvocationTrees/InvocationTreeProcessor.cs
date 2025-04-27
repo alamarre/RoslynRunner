@@ -64,7 +64,7 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     var root = results.Methods.First();
                     diagramMethods = DedupingQueueRunner.ProcessResults((InvocationMethod i) =>
                     {
-                        bool selfIsSafe = (new[] { i }).AsQueryable().Any(diagram.InclusivePruneFilter);
+                        bool selfIsSafe = (new[] { i }).AsQueryable().Any(diagram.InclusivePruneFilter, symbol!.ContainingAssembly.Name);
                         if (!selfIsSafe)
                         {
                             return [];
@@ -86,14 +86,14 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                 if (diagram.Filter != null)
                 {
                     var filteredMethods = diagramMethods
-                        .Where(m => m.InvokedMethods.AsQueryable().Where(diagram.Filter).Any())
+                        .Where(m => m.InvokedMethods.AsQueryable().Where(diagram.Filter, symbol!.ContainingAssembly.Name).Any())
                         .ToArray();
                     if (diagram.SeparateDiagrams)
                     {
                         foreach (var method in filteredMethods)
                         {
                             var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), new[] { method });
-                            var result = await GetDiagram(diagram, callChains);
+                            var result = await GetDiagram(diagram, results, callChains);
 
                             var fileName = method.MethodSymbol.ContainingType.ToDisplayString() + "." +
                                            method.MethodSymbol.Name + extension;
@@ -111,13 +111,13 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     else
                     {
                         var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
-                        var result = await GetDiagram(diagram, callChains);
+                        var result = await GetDiagram(diagram, results, callChains);
                         await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
                     }
                 }
                 else
                 {
-                    string result = await GetDiagram(diagram, diagramMethods);
+                    string result = await GetDiagram(diagram, results, diagramMethods);
 
                     await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
                 }
@@ -125,13 +125,13 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
         }
     }
 
-    private static async Task<string> GetDiagram(InvocationDiagram diagram, IEnumerable<InvocationMethod> diagramMethods)
+    private static async Task<string> GetDiagram(InvocationDiagram diagram, InvocationRoot invocationRoot, IEnumerable<InvocationMethod> diagramMethods)
     {
         return diagram.DiagramType switch
         {
             "dot" => await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods),
             "JSON" => InvocationTreeJsonWriter.WriteInvocationTreeToJson(diagramMethods),
-            _ => InvocationTreeMermaidWriter.GetMermaidDagForCallers(diagramMethods)
+            _ => InvocationTreeMermaidWriter.GetMermaidDagForInvocationTree(invocationRoot, diagramMethods.ToHashSet(), diagram.WriteAllMethods)
         };
     }
 

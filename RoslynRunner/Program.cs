@@ -103,58 +103,7 @@ await app.RunAsync();
 
 public record Run(Guid? RunId);
 
-[McpServerToolType]
-public static class RoslynRunnerTool
-{
-    [McpServerTool]
-    [Description("Loads a solution to be cached for future analysis")]
-    public static async Task<string> LoadSolution(
-        IRunQueue queue,
-        CommandRunningService commandRunningService,
-        [Description("The absolute path of the project or solution to load")] string solutionPath,
-        [Description("Whether to preload symbols in the cache")] bool cacheSymbols,
-        [Description("The name of the project to cache symbols from")] string? projectName,
-        CancellationToken cancellationToken)
-    {
-        var context = new RunCommand(
-            PrimarySolution: solutionPath,
-            PersistSolution: true,
-            ProcessorSolution: null,
-            ProcessorName: "SolutionLoader",
-            AssemblyLoadContextPath: null,
-            Context: null);
-        Guid runId = await queue.Enqueue(context, cancellationToken);
 
-        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
-        return JsonSerializer.Serialize(result.Value);
-    }
-
-    [McpServerTool]
-    [Description("Run an analyzer on a target project")]
-    public static async Task<string> RunAnalyzer(
-        IRunQueue queue,
-        CommandRunningService commandRunningService,
-        [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
-        [Description("The name of the target project")] string targetProjectName,
-        [Description("The absolute path to the analyzer project")] string analyzerProjectPath,
-        [Description("The fully qualified name of the analyzer")] string analyzerName,
-        CancellationToken cancellationToken)
-    {
-        var context = new RunCommand<AnalyzerContext>(
-            PrimarySolution: targetProjectPath,
-            PersistSolution: false,
-            ProcessorName: "AnalyzerRunner",
-            AssemblyLoadContextPath: null,
-            Context: new AnalyzerContext(analyzerProjectPath,
-            targetProjectName,
-            new List<string> { analyzerName })
-        );
-        Guid runId = await queue.Enqueue(context.ToRunCommand(), cancellationToken);
-
-        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
-        return JsonSerializer.Serialize(result.Value);
-    }
-}
 
 
 public partial class Program { }
