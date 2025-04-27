@@ -64,7 +64,6 @@ public static class RoslynRunnerMcpTool
         CommandRunningService commandRunningService,
         [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
         [Description("The fully qualified name of the type to analyze")] string typeName,
-        [Description("Diagram or output format (options are: mermaid, dot, or JSON)")] string diagramFormat,
         [Description("Folder to save the diagram in")] string outputPath,
         [Description("The name, minus the extension, of the diagram file")] string diagramName,
         [Description("The maximum time for the processor to run in seconds")] int maxTime = 300,
@@ -83,9 +82,9 @@ public static class RoslynRunnerMcpTool
                     new InvocationDiagram(
                         OutputPath: outputPath,
                         Name: diagramName,
-                        DiagramType: diagramFormat,
+                        DiagramType: "d3",
                         SeparateDiagrams: false,
-                        InclusivePruneFilter: "MethodSymbol.ContainingAssembly.Name == @0",
+                        InclusivePruneFilter: null,
                         WriteAllMethods: true,
                         Filter: null)
                 ],

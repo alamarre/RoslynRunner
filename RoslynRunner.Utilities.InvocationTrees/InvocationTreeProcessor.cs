@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Linq.Dynamic.Core;
 using Microsoft.Extensions.Logging;
+using RoslynRunner.Abstractions;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
@@ -47,6 +48,7 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     cancellationToken: cancellationToken);
 
         }
+        var runContext = RunContextAccessor.RunContext;
 
         if (parameters.Diagrams != null)
         {
@@ -80,7 +82,9 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                 {
                     "dot" => ".dot",
                     "JSON" => ".json",
-                    _ => ".md"
+                    "d3" => ".html",
+                    "mermaid" => ".md",
+                    _ => throw new NotImplementedException($"Diagram type {diagram.DiagramType} is not supported"),
                 };
                 HashSet<IMethodSymbol> validMethods = new(diagramMethods.Select(m => m.MethodSymbol), SymbolEqualityComparer.Default);
                 if (diagram.Filter != null)
@@ -100,7 +104,9 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                             fileName = fileName.Replace('<', '_').Replace('>', '_');
                             try
                             {
-                                await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, fileName), result);
+                                var path = Path.Combine(diagram.OutputPath, fileName);
+                                await File.WriteAllTextAsync(path, result);
+                                runContext.Output.Add($"wrote diagram {path}");
                             }
                             catch (Exception e)
                             {
@@ -112,17 +118,22 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     {
                         var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
                         var result = await GetDiagram(diagram, results, callChains);
-                        await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
+                        var path = Path.Combine(diagram.OutputPath, diagram.Name + extension);
+                        await File.WriteAllTextAsync(path, result);
+                        runContext.Output.Add($"wrote diagram {path}");
                     }
                 }
                 else
                 {
                     string result = await GetDiagram(diagram, results, diagramMethods);
-
-                    await File.WriteAllTextAsync(Path.Combine(diagram.OutputPath, diagram.Name + extension), result);
+                    var path = Path.Combine(diagram.OutputPath, diagram.Name + extension);
+                    await File.WriteAllTextAsync(path, result);
+                    runContext.Output.Add($"wrote diagram {path}");
                 }
             }
         }
+
+
     }
 
     private static async Task<string> GetDiagram(InvocationDiagram diagram, InvocationRoot invocationRoot, IEnumerable<InvocationMethod> diagramMethods)
@@ -131,7 +142,9 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
         {
             "dot" => await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods),
             "JSON" => InvocationTreeJsonWriter.WriteInvocationTreeToJson(diagramMethods),
-            _ => InvocationTreeMermaidWriter.GetMermaidDagForInvocationTree(invocationRoot, diagramMethods.ToHashSet(), diagram.WriteAllMethods)
+            "mermaid" => InvocationTreeMermaidWriter.GetMermaidDagForInvocationTree(invocationRoot, diagramMethods.ToHashSet(), diagram.WriteAllMethods),
+            "d3" => InvocationTreeD3Writer.GetD3GraphForCallers(diagramMethods),
+            _ => throw new NotImplementedException($"Diagram type {diagram.DiagramType} is not supported"),
         };
     }
 

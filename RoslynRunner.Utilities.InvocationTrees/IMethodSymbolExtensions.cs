@@ -6,6 +6,10 @@ namespace RoslynRunner.Utilities.InvocationTrees;
 
 public static class IMethodSymbolExtensions
 {
+
+    private static readonly SymbolDisplayFormat FullyQualifiedFormat = SymbolDisplayFormat.FullyQualifiedFormat
+        .WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted);
+
     public static string GetMethodDisplayName(this IMethodSymbol symbol)
     {
         return symbol.MethodKind switch
@@ -17,17 +21,27 @@ public static class IMethodSymbolExtensions
         };
     }
 
-    public static string GenerateMethodSignature(this IMethodSymbol symbol, bool includeModifiers = false)
+    public static string GetMethodId(this IMethodSymbol symbol)
+    {
+        var builder = new StringBuilder();
+        builder.Append(symbol.ContainingType.ToDisplayString(FullyQualifiedFormat));
+        builder.Append(".");
+        builder.Append(GenerateMethodSignature(symbol)); // Use the helper for name
+
+        return builder.ToString();
+    }
+
+    public static string GenerateMethodSignature(this IMethodSymbol symbol, bool includeGenericInfo = false, bool includeModifiers = false)
     {
         var builder = new StringBuilder();
         builder.Append(GetMethodDisplayName(symbol)); // Use the helper for name
 
         // Append generic type arguments if present
-        if (symbol.IsGenericMethod)
+        if (includeGenericInfo && symbol.IsGenericMethod)
         {
             builder.Append("<");
             // Use FullyQualifiedFormat for type arguments
-            builder.Append(string.Join(", ", symbol.TypeArguments.Select(ta => ta.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))));
+            builder.Append(string.Join(", ", symbol.TypeArguments.Select(ta => ta.ToDisplayString(FullyQualifiedFormat))));
             builder.Append(">");
         }
 
@@ -43,7 +57,7 @@ public static class IMethodSymbolExtensions
                 _ => ""
             } : "";
             // Use FullyQualifiedFormat for parameter types
-            paramStr += p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            paramStr += p.Type.ToDisplayString(FullyQualifiedFormat);
             return paramStr;
         })));
         builder.Append(")");

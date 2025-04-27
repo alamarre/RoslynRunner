@@ -22,14 +22,14 @@ public record MethodCallInfo(
         var methodName = methodSymbol.Name;
         var methodSignature = methodSymbol.GenerateMethodSignature(includeModifiers: false);
 
-        var callIds = invocationMethod.Callers.Select(c => c.MethodSymbol.GenerateMethodSignature()).ToList();
-        var implIds = invocationMethod.Implementations.Select(i => i.MethodSymbol.GenerateMethodSignature()).ToList();
-        var invokedMethodIds = invocationMethod.InvokedMethods.Select(i => i.Value.MethodSymbol.GenerateMethodSignature()).ToList();
+        var callIds = invocationMethod.Callers.Select(c => c.MethodSymbol.GetMethodId()).ToList();
+        var implIds = invocationMethod.Implementations.Select(i => i.MethodSymbol.GetMethodId()).ToList();
+        var invokedMethodIds = invocationMethod.InvokedMethods.Select(i => i.Value.MethodSymbol.GetMethodId()).ToList();
         return new MethodCallInfo(
             containingTypeFqdn,
             methodName,
             methodSignature,
-            invocationMethod.MethodSymbol.GenerateMethodSignature(),
+            invocationMethod.MethodSymbol.GetMethodId(),
             callIds,
             implIds,
             invokedMethodIds
