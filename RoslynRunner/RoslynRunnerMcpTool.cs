@@ -18,7 +18,8 @@ public static class RoslynRunnerMcpTool
         [Description("The absolute path of the project or solution to load")] string solutionPath,
         [Description("Whether to preload symbols in the cache")] bool cacheSymbols,
         [Description("The name of the project to cache symbols from")] string? projectName,
-        CancellationToken cancellationToken)
+        [Description("The maximumum time to run in seconds")] int maxTime = 3600,
+        CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
             PrimarySolution: solutionPath,
@@ -29,7 +30,7 @@ public static class RoslynRunnerMcpTool
             Context: null);
         Guid runId = await queue.Enqueue(context, cancellationToken);
 
-        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
+        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
         return JsonSerializer.Serialize(result.Value);
     }
 
@@ -39,16 +40,17 @@ public static class RoslynRunnerMcpTool
         IRunQueue queue,
         CommandRunningService commandRunningService,
         [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
-        [Description("The absolute path to the processor project")] string processorProjectPath,
-        [Description("The name of the processor project")] string processorProjectName,
-        [Description("The maximumum time for the processor to run in seconds")] int maxTime = 300,
+        [Description("The absolute path to the csproj for the solution processor")] string processorProjectPath,
+        [Description("The fully qualified domain name of the processor class")] string processorFqdn,
+        [Description("The maximumum time for the processor to run in seconds")] int maxTime = 3600,
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
             PrimarySolution: targetProjectPath,
             PersistSolution: false,
             ProcessorSolution: processorProjectPath,
-            ProcessorName: processorProjectName,
+            ProcessorName: processorFqdn,
+            ProcessorProjectName: null,
             AssemblyLoadContextPath: null,
             Context: null);
         Guid runId = await queue.Enqueue(context, cancellationToken);
@@ -62,7 +64,7 @@ public static class RoslynRunnerMcpTool
     public static async Task<string> CreateDiagram(
         IRunQueue queue,
         CommandRunningService commandRunningService,
-        [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
+        [Description("The absolute path solution file to analyze")] string targetSolutionPath,
         [Description("The fully qualified name of the type to analyze")] string typeName,
         [Description("Folder to save the diagram in")] string outputPath,
         [Description("The name, minus the extension, of the diagram file")] string diagramName,
@@ -71,7 +73,7 @@ public static class RoslynRunnerMcpTool
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
-            PrimarySolution: targetProjectPath,
+            PrimarySolution: targetSolutionPath,
             PersistSolution: false,
             ProcessorSolution: null,
             ProcessorName: "CallChains",

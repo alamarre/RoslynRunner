@@ -10,7 +10,7 @@ public class SampleController : ControllerBase
     {
         return "pong";
     }
-    
+
     [HttpGet("ping")]
     public string Ping()
     {

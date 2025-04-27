@@ -44,13 +44,17 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         TestAssemblyLoadContext? loadContext = null;
 
 
-        if (runCommand.ProcessorSolution != null && runCommand.ProcessorProjectName != null)
+        if (runCommand.ProcessorSolution != null)
         {
             var processorWorkspace = MSBuildWorkspace.Create();
             var processorSolution =
                 await CompilationTools.GetSolution(processorWorkspace, runCommand.ProcessorSolution, null);
             var project =
                 processorSolution.Projects.FirstOrDefault(p => p.Name == runCommand.ProcessorProjectName);
+            if (project == null && runCommand.ProcessorSolution.EndsWith(".csproj"))
+            {
+                project = processorSolution.Projects.FirstOrDefault(p => p.FilePath == runCommand.ProcessorSolution);
+            }
             if (project == null)
             {
                 throw new Exception("project does not exist");
