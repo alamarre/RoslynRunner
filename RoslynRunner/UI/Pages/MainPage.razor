@@ -57,7 +57,7 @@
 
                     <MudItem>
                         <MudTextField Lines="3" @bind-Value="contextText" Label=@Labels.ContextJson
-                            Variant="Variant.Outlined" Multiline="true" />
+                            Variant="Variant.Outlined" AutoGrow />
                         @if (contextError != null)
                         {
                             <MudAlert Severity="Severity.Error">@contextError</MudAlert>
@@ -72,12 +72,12 @@
         <MudTabPanel OnClick="UpdateCommandText" Text="JSON">
             <MudItem>
                 <MudTextField Lines="6" Value="@currentRunCommandJson" Label=@Labels.CurrentRunCommandJson
-                    ReadOnly="true" Variant="Variant.Outlined" Multiline="true" />
+                    ReadOnly="true" Variant="Variant.Outlined" AutoGrow />
                 <MudButton OnClick="CopyToClipboard" Variant="Variant.Filled">Copy to Clipboard</MudButton>
             </MudItem>
             <MudItem>
                 <MudTextField Lines="6" @bind-Value="loadJsonText" Label=@Labels.LoadJson Variant="Variant.Outlined"
-                    Multiline="true" />
+                    AutoGrow />
                 <MudButton OnClick="LoadFromJson" Variant="Variant.Filled">Load</MudButton>
             </MudItem>
         </MudTabPanel>

@@ -95,7 +95,7 @@ public class CommandRunningService(
             var result = await tcs.Task.WaitAsync(timeout, cancellationToken);
             return result;
         }
-        catch (TaskCanceledException)
+        catch (TimeoutException)
         {
             // should instruct the client to wait
             return Result.Unavailable();

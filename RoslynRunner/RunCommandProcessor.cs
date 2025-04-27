@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
+using RoslynRunner.Utilities.InvocationTrees;
 
 namespace RoslynRunner;
 
@@ -43,13 +44,17 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         TestAssemblyLoadContext? loadContext = null;
 
 
-        if (runCommand.ProcessorSolution != null && runCommand.ProcessorProjectName != null)
+        if (runCommand.ProcessorSolution != null)
         {
             var processorWorkspace = MSBuildWorkspace.Create();
             var processorSolution =
                 await CompilationTools.GetSolution(processorWorkspace, runCommand.ProcessorSolution, null);
             var project =
                 processorSolution.Projects.FirstOrDefault(p => p.Name == runCommand.ProcessorProjectName);
+            if (project == null && runCommand.ProcessorSolution.EndsWith(".csproj"))
+            {
+                project = processorSolution.Projects.FirstOrDefault(p => p.FilePath == runCommand.ProcessorSolution);
+            }
             if (project == null)
             {
                 throw new Exception("project does not exist");
@@ -109,6 +114,14 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         else if (runCommand.ProcessorName == nameof(AnalyzerRunner))
         {
             processor = new AnalyzerRunner();
+        }
+        else if (runCommand.ProcessorName == "CallChains")
+        {
+            processor = new InvocationTreeProcessor();
+        }
+        else if (runCommand.ProcessorName == "SolutionLoader")
+        {
+            processor = new NullActionLoader();
         }
 
         if (processor == null)

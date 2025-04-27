@@ -7,9 +7,8 @@ using RoslynRunner;
 using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
 using RoslynRunner.UI;
-using Microsoft.AspNetCore.Builder.Extensions;
 using System.Text.Json;
-using Ardalis.Result.AspNetCore;
+using RoslynRunner.Runs;
 
 try
 {
@@ -54,22 +53,7 @@ app.UseSwaggerUI(options =>
 });
 //}
 
-app.MapPost("/runs", async (
-    IRunQueue queue,
-    [FromBody] RunCommand runCommand,
-    CancellationToken cancellationToken) =>
-{
-    var id = await queue.Enqueue(runCommand, cancellationToken);
-    return Results.Ok(new Run(id));
-});
-
-app.MapPost("/rerun", async (
-    IRunQueue queue,
-    CancellationToken cancellationToken) =>
-{
-    var id = await queue.ReRunLastEnqueuedCommand(cancellationToken);
-    return Results.Ok(new Run(id));
-});
+app.MapRunEndpoints();
 
 app.MapPost("/assemblies/global", async (
     [FromBody] LibraryReference reference,
@@ -79,15 +63,6 @@ app.MapPost("/assemblies/global", async (
     return Results.Created();
 });
 
-app.MapGet("/runs", (CommandRunningService commandRunningService) =>
-     Results.Ok(commandRunningService.RunParameters));
-
-app.MapGet("/runs/{runId}", async (Guid runId, CommandRunningService commandRunningService, CancellationToken cancellationToken) =>
-{
-    var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(30), cancellationToken);
-    return result.ToMinimalApiResult();
-});
-
 app.MapPost("/analyze", async (
     IRunQueue queue,
     [FromBody] RunCommand<AnalyzerContext> analyzeCommand,
@@ -95,13 +70,6 @@ app.MapPost("/analyze", async (
 {
     await queue.Enqueue(analyzeCommand.ToRunCommand(), cancellationToken);
     return Results.Created();
-});
-
-app.MapDelete("/run", (
-    ICancellationTokenManager cancellationTokenManager) =>
-{
-    cancellationTokenManager.CancelCurrentTask();
-    return Results.Empty;
 });
 
 app.MapGet("/solutions", (RunCommandProcessor runCommandProcessor) =>
@@ -135,47 +103,7 @@ await app.RunAsync();
 
 public record Run(Guid? RunId);
 
-[McpServerToolType]
-public static class RoslynRunnerTool
-{
-    [McpServerTool]
-    [Description("Loads a solution for analysis")]
-    public static async Task<string> LoadSolution(
-        IRunQueue queue,
-        [Description("The absolute path to the solution to load")] string solutionPath)
-    {
 
-        await Task.Delay(1000);
-        return $"loaded {solutionPath}";
-
-    }
-
-    [McpServerTool]
-    [Description("Run an analyzer on a target project")]
-    public static async Task<string> RunAnalyzer(
-        IRunQueue queue,
-        CommandRunningService commandRunningService,
-        [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
-        [Description("The name of the target project")] string targetProjectName,
-        [Description("The absolute path to the analyzer project")] string analyzerProjectPath,
-        [Description("The fully qualified name of the analyzer")] string analyzerName,
-        CancellationToken cancellationToken)
-    {
-        var context = new RunCommand<AnalyzerContext>(
-            PrimarySolution: targetProjectPath,
-            PersistSolution: false,
-            ProcessorName: "AnalyzerRunner",
-            AssemblyLoadContextPath: null,
-            Context: new AnalyzerContext(analyzerProjectPath,
-            targetProjectName,
-            new List<string> { analyzerName })
-        );
-        Guid runId = await queue.Enqueue(context.ToRunCommand(), cancellationToken);
-
-        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
-        return JsonSerializer.Serialize(result.Value);
-    }
-}
 
 
 public partial class Program { }
