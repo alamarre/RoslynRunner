@@ -167,8 +167,9 @@ public static class InvocationTreeBuilder
             {
                 List<InvocationMethod> newMethods = new();
                 var methodSymbol = method.MethodSymbol;
+                methodSymbol = cachedSymbolFinder.SymbolCache.MethodCache.Keys.FirstOrDefault(m => m.GetMethodId() == methodSymbol.OriginalDefinition.GetMethodId());
 
-                if (await methodSymbol.Locations.First().GetSyntaxNodeAsync(cancellationToken)
+                if (methodSymbol is null || await methodSymbol.Locations.First(l => l.IsInSource).GetSyntaxNodeAsync(cancellationToken)
                     is not MethodDeclarationSyntax currentMethodNode)
                 {
                     return newMethods;
