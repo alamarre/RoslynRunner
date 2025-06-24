@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace RoslynRunner.Core.Extensions;
+
 public static class SymbolExtensions
 {
     // from https://stackoverflow.com/questions/27105909/get-fully-qualified-metadata-name-in-roslyn

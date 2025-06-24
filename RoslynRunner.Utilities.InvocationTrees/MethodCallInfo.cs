@@ -1,5 +1,6 @@
 using System;
 using Microsoft.CodeAnalysis;
+using RoslynRunner.Core;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 

@@ -1,5 +1,4 @@
-﻿using D2L.RoslynRunner.Processors;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
@@ -8,6 +7,7 @@ using RoslynRunner.Core;
 using RoslynRunner.Core.Caching;
 using RoslynRunner.Core.Extensions;
 using RoslynRunner.Core.QueueProcessing;
+using RoslynRunner.Processors;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
@@ -152,11 +152,16 @@ public static class InvocationTreeBuilder
         CancellationToken cancellationToken = default)
     {
         Dictionary<IMethodSymbol, InvocationMethod> methodCache = startingMethodCache ?? new(SymbolEqualityComparer.Default);
-        var methodSymbols = cachedSymbolFinder.SymbolCache.MethodCache.Keys.Where(m => m.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == startingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+        var methodSymbols = cachedSymbolFinder.GetMethods(startingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted)), null);
+
+        if (methodSymbols is null || !methodSymbols.Any())
+        {
+            return (new InvocationRoot(new List<InvocationMethod>()), new List<InvocationMethod>());
+        }
 
         if (methodFilter != null)
         {
-            methodSymbols = methodSymbols.Where(m => m.Name == methodFilter);
+            methodSymbols = methodSymbols.Where(m => m.Name == methodFilter).ToList();
         }
         var initialMethods = methodSymbols.Select(m =>
             new InvocationMethod(m, new List<InvocationMethod>(), new List<InvocationMethod>(),
@@ -167,10 +172,9 @@ public static class InvocationTreeBuilder
             {
                 List<InvocationMethod> newMethods = new();
                 var methodSymbol = method.MethodSymbol;
-                methodSymbol = cachedSymbolFinder.SymbolCache.MethodCache.Keys.FirstOrDefault(m => m.GetMethodId() == methodSymbol.OriginalDefinition.GetMethodId());
+                methodSymbol = cachedSymbolFinder.GetFromOwnCompilation(methodSymbol);
 
-                if (methodSymbol is null || await methodSymbol.Locations.First(l => l.IsInSource).GetSyntaxNodeAsync(cancellationToken)
-                    is not MethodDeclarationSyntax currentMethodNode)
+                if (methodSymbol is null)
                 {
                     return newMethods;
                 }

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace D2L.RoslynRunner.Processors;
+namespace RoslynRunner.Processors;
 
 public static class MethodSymbolExtensions
 {

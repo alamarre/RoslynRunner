@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.EndToEndTests"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.ApiTests", "RoslynRunner.ApiTests\RoslynRunner.ApiTests.csproj", "{016D3AAF-200C-4E3F-9C90-43EDAC781C80}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynRunner.Core.UnitTests", "Tests\RoslynRunner.Core.UnitTests\RoslynRunner.Core.UnitTests.csproj", "{B6335EC1-487E-48C0-81F1-4473DF737495}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -67,6 +69,10 @@ Global
 		{016D3AAF-200C-4E3F-9C90-43EDAC781C80}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{016D3AAF-200C-4E3F-9C90-43EDAC781C80}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{016D3AAF-200C-4E3F-9C90-43EDAC781C80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6335EC1-487E-48C0-81F1-4473DF737495}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6335EC1-487E-48C0-81F1-4473DF737495}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6335EC1-487E-48C0-81F1-4473DF737495}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6335EC1-487E-48C0-81F1-4473DF737495}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -76,6 +82,7 @@ Global
 		{600AF983-FAD6-4237-8E07-B8A3942E8654} = {77FAAA3E-1EE7-46DF-8B33-51F1BEF1D17D}
 		{0660DE6F-5205-4FA2-8666-1DE124B73445} = {D0C0B84D-6E05-4C9A-817E-547F603FD787}
 		{016D3AAF-200C-4E3F-9C90-43EDAC781C80} = {D0C0B84D-6E05-4C9A-817E-547F603FD787}
+		{B6335EC1-487E-48C0-81F1-4473DF737495} = {D0C0B84D-6E05-4C9A-817E-547F603FD787}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {07906EA8-B78B-4447-9562-3944A73A272C}

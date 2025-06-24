@@ -17,76 +17,11 @@ public record MethodData(
 
 public record SymbolCache(
     Dictionary<IMethodSymbol, MethodData> MethodCache,
+    Dictionary<string, IMethodSymbol> MethodNameCache,
     Dictionary<IMethodSymbol, List<IMethodSymbol>> ImplementationCache,
     Dictionary<string, List<ISymbol>> TypeImplementations,
     Dictionary<string, INamedTypeSymbol> MetadataNameCache,
     Dictionary<IOperation, List<IMethodSymbol>> CallerCache);
-
-public class CachedSymbolFinder
-{
-    public SymbolCache SymbolCache { get; }
-
-    public static async Task<CachedSymbolFinder> FromCache(Solution solution,
-        string? projectName = null,
-        CancellationToken cancellationToken = default)
-    {
-        var resultCache = await MemoryCache.GetOrAddAsync<string, string, SymbolCache>("solution_cache", solution.FilePath!, async () =>
-        {
-            var cache = await solution.BuildSymbolCacheAsync(projectName, cancellationToken);
-            return cache;
-        });
-        return new CachedSymbolFinder(resultCache);
-    }
-
-    public CachedSymbolFinder(SymbolCache symbolCache)
-    {
-        SymbolCache = symbolCache;
-    }
-
-    public static string GetFullyQualifiedMetadataName(ISymbol symbol)
-    {
-        return symbol.GetFullMetadataName();
-    }
-
-    public List<ISymbol>? FindTypeImplementations(ISymbol symbol)
-    {
-        string key = GetFullyQualifiedMetadataName(symbol);
-        return SymbolCache.TypeImplementations.TryGetValue(key, out var implementations) ? implementations : null;
-    }
-
-    public List<IMethodSymbol>? FindCallers(IOperation operation)
-    {
-        return SymbolCache.CallerCache.TryGetValue(operation, out var callers) ? callers : null;
-    }
-
-    public MethodData? GetMethodData(IMethodSymbol methodSymbol)
-    {
-        return SymbolCache.MethodCache.TryGetValue(methodSymbol, out var methodData) ? methodData : null;
-    }
-
-    public List<IMethodSymbol>? GetImplementations(IMethodSymbol methodSymbol)
-    {
-        return SymbolCache.ImplementationCache.TryGetValue(methodSymbol, out var implementations) ? implementations : null;
-    }
-
-
-
-    public List<IMethodSymbol> GetMethods(string typeMetadataName, string methodName)
-    {
-        List<IMethodSymbol> methods = new();
-        var type = GetSymbolByMetadataName(typeMetadataName);
-        if (type is null)
-        {
-            return methods;
-        }
-        return type.GetMembers(methodName).OfType<IMethodSymbol>().ToList();
-    }
-
-    public INamedTypeSymbol? GetSymbolByMetadataName(string metadataName)
-    {
-        return SymbolCache.MetadataNameCache.TryGetValue(metadataName, out var symbol) ? symbol : null;
-    }
-}
 
 public static class ProjectExtensions
 {
@@ -100,6 +35,8 @@ public static class ProjectExtensions
         Dictionary<string, List<ISymbol>> typeImplementations = new();
         Dictionary<IOperation, List<IMethodSymbol>> callerCache = new();
         Dictionary<string, INamedTypeSymbol> metadataNameCache = new();
+        Dictionary<string, IMethodSymbol> methodNameCache = new();
+
         var projects = solution.Projects;
         if (projectName is not null)
         {
@@ -180,6 +117,7 @@ public static class ProjectExtensions
                 // Process each method declared on the type.
                 foreach (IMethodSymbol methodSymbol in namedType.GetMembers().OfType<IMethodSymbol>())
                 {
+                    methodNameCache[methodSymbol.GetMethodId()] = methodSymbol;
                     var syntaxReferences = methodSymbol.DeclaringSyntaxReferences;
                     if (syntaxReferences.Length == 0)
                     {
@@ -260,7 +198,7 @@ public static class ProjectExtensions
             }
         }
 
-        return new SymbolCache(methodCache, implementationCache, typeImplementations, metadataNameCache, callerCache);
+        return new SymbolCache(methodCache, methodNameCache, implementationCache, typeImplementations, metadataNameCache, callerCache);
     }
 
     // Helper method to recursively collect all types from the compilation's global namespace.

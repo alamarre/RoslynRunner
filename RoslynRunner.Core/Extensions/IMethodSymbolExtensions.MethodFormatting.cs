@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using Microsoft.CodeAnalysis;
 
-namespace RoslynRunner.Utilities.InvocationTrees;
+namespace RoslynRunner.Core;
 
 public static class IMethodSymbolExtensions
 {
