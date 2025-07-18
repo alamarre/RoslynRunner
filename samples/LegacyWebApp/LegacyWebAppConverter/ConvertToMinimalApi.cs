@@ -5,10 +5,11 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
+using RoslynRunner.Utilities.InvocationTrees;
 
 namespace LegacyWebAppConverter;
 
-public record ConvertToMinimalApiContext(string OutputRoot);
+public record ConvertToMinimalApiContext(string OutputRoot, string AsyncOutputPath, string AsyncTypeName, string? AsyncMethodName = null);
 
 public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext>
 {
@@ -65,6 +66,23 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                 await File.WriteAllTextAsync(newFilePath, syntaxRoot.ToFullString(), cancellationToken);
             }
         }
+
+        if (context != null)
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            var serviceType = cache.GetSymbolByMetadataName(context.AsyncTypeName);
+            if (serviceType != null)
+            {
+                var engine = new AsyncConversionEngine(cache, solution);
+                var newRoot = await engine.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
+                if (newRoot != null)
+                {
+                    await File.WriteAllTextAsync(context.AsyncOutputPath, newRoot.ToFullString(), cancellationToken);
+                    RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.AsyncOutputPath)}");
+                }
+            }
+        }
+    }
     }
 
     private SyntaxNode ReplaceNamespace(SyntaxNode syntaxRoot)
