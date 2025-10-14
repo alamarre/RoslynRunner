@@ -26,22 +26,37 @@ public class SampleRefactorTests
 
         var legacyWebAppConverterCsproj = Path.Combine(sampleRoot, "LegacyWebAppConverter", "LegacyWebAppConverter.csproj");
 
+        string asyncFile = Path.Combine(sampleRoot, "ModernWebApi", "Services", "RecursiveServiceAsync.cs");
+        if (File.Exists(asyncFile))
+        {
+            File.Delete(asyncFile);
+        }
+        var ctx1 = JsonSerializer.Serialize(new
+        {
+            OutputRoot = string.Empty,
+            AsyncOutputPath = asyncFile,
+            AsyncTypeName = "ModernWebApi.Services.RecursiveService",
+            AsyncMethodName = (string?)null
+        });
         RunCommand runCommand = new(
             ProcessorSolution: legacyWebAppConverterCsproj,
             ProcessorName: "LegacyWebAppConverter.ConvertToMinimalApi",
             ProcessorProjectName: "LegacyWebAppConverter",
             PrimarySolution: legacyWebappSln,
-            PersistSolution: false
+            PersistSolution: false,
+            Context: ctx1
         );
 
         var runResponse = await ValidateRun(runCommand);
 
         var runResult = await runResponse.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
         Assert.That(runResult?.Errors, Is.Empty);
-        Assert.That(runResult?.Output.Single(), Is.EqualTo($"Created file: {Path.GetFullPath(targetFile)}"));
+        Assert.That(runResult?.Output, Does.Contain($"Created file: {Path.GetFullPath(targetFile)}"));
+        Assert.That(runResult?.Output, Does.Contain($"Created file: {Path.GetFullPath(asyncFile)}"));
         Assert.That(runResult?.IsRunning, Is.False);
 
         Assert.That(File.Exists(targetFile), Is.True);
+        Assert.That(File.Exists(asyncFile), Is.True);
     }
 
     [Test]

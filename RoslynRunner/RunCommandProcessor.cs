@@ -119,6 +119,10 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
         {
             processor = new InvocationTreeProcessor();
         }
+        else if (runCommand.ProcessorName == "AsyncConverter")
+        {
+            processor = new AsyncConversionProcessor();
+        }
         else if (runCommand.ProcessorName == "SolutionLoader")
         {
             processor = new NullActionLoader();

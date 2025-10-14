@@ -2,13 +2,16 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
+using RoslynRunner.Core.Extensions;
+using RoslynRunner.Utilities.InvocationTrees;
 
 namespace LegacyWebAppConverter;
 
-public record ConvertToMinimalApiContext(string OutputRoot);
+public record ConvertToMinimalApiContext(string OutputRoot, string AsyncOutputPath, string AsyncTypeName, string? AsyncMethodName = null);
 
 public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext>
 {
@@ -63,6 +66,26 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
 
                 RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(newFilePath)}");
                 await File.WriteAllTextAsync(newFilePath, syntaxRoot.ToFullString(), cancellationToken);
+            }
+        }
+
+        if (context != null)
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution, null, cancellationToken);
+            var serviceType = cache.GetSymbolByMetadataName(context.AsyncTypeName);
+            if (serviceType != null)
+            {
+                var generator = new AsyncConversionGenerator(cache, solution);
+                var conversionResult = await generator.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
+                if (conversionResult != null)
+                {
+                    var document = conversionResult.Documents.FirstOrDefault();
+                    if (document != null)
+                    {
+                        await File.WriteAllTextAsync(context.AsyncOutputPath, document.UpdatedRoot.ToFullString(), cancellationToken);
+                    }
+                    RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.AsyncOutputPath)}");
+                }
             }
         }
     }
