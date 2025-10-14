@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Operations;
+using RoslynRunner.Core.Extensions;
 using RoslynRunner.Core.QueueProcessing;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
@@ -137,7 +138,9 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
             }
             else
             {
-                updated = updated.WithReturnType(SyntaxFactory.ParseTypeName($"System.Threading.Tasks.Task<{ret.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}>");
+                var returnType = "System.Threading.Tasks.Task<" +
+                    ret.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) + ">";
+                updated = updated.WithReturnType(SyntaxFactory.ParseTypeName(returnType));
             }
         }
         return updated;

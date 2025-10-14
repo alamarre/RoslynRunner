@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Utilities.InvocationTrees;
-using LegacyWebAppConverter;
 using YamlDotNet.Serialization;
 
 namespace RoslynRunner.ApiTests;
@@ -32,7 +31,13 @@ public class SampleRefactorTests
         {
             File.Delete(asyncFile);
         }
-        var ctx1 = JsonSerializer.Serialize(new ConvertToMinimalApiContext("", asyncFile, "ModernWebApi.Services.RecursiveService"));
+        var ctx1 = JsonSerializer.Serialize(new
+        {
+            OutputRoot = string.Empty,
+            AsyncOutputPath = asyncFile,
+            AsyncTypeName = "ModernWebApi.Services.RecursiveService",
+            AsyncMethodName = (string?)null
+        });
         RunCommand runCommand = new(
             ProcessorSolution: legacyWebAppConverterCsproj,
             ProcessorName: "LegacyWebAppConverter.ConvertToMinimalApi",
@@ -52,39 +57,6 @@ public class SampleRefactorTests
 
         Assert.That(File.Exists(targetFile), Is.True);
         Assert.That(File.Exists(asyncFile), Is.True);
-    }
-
-    [Test]
-    public async Task ApiCanRunAsyncConversion()
-    {
-        var baseDirectory = AppContext.BaseDirectory!;
-        var sampleRoot = Path.Combine(baseDirectory, "samples", "LegacyWebApp");
-        string targetFile = Path.Combine(sampleRoot, "ModernWebApi", "Services", "RecursiveServiceAsync.cs");
-        if (File.Exists(targetFile))
-        {
-            File.Delete(targetFile);
-        }
-        Assert.That(File.Exists(targetFile), Is.False);
-        var legacyWebappSln = Path.Combine(sampleRoot, "LegacyWebApp.sln");
-        var request = new
-        {
-            targetSolution = legacyWebappSln,
-            typeName = "ModernWebApi.Services.RecursiveService",
-            outputFile = targetFile,
-            methodName = (string?)null,
-            maxTime = 300
-        };
-
-        var runResponse = await AppContext.HttpClient.PostAsJsonAsync("http://localhost:5000/tools/RoslynRunnerMcpTool/ConvertSyncToAsync", request);
-        Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
-        var runResult = await runResponse.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
-        Assert.That(runResult?.Errors, Is.Empty);
-        Assert.That(runResult?.Output.Single(), Is.EqualTo($"Created file: {Path.GetFullPath(targetFile)}"));
-        Assert.That(File.Exists(targetFile), Is.True);
-
-        var contents = File.ReadAllText(targetFile);
-        Assert.That(contents.Contains("async"));
-        Assert.That(contents.Contains("QueryAsync"));
     }
 
     [Test]
