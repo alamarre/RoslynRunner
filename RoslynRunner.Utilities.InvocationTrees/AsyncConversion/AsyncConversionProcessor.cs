@@ -1,5 +1,7 @@
+using System.Linq;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
@@ -25,14 +27,18 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
         }
 
         var engine = new AsyncConversionEngine(cache, solution);
-        var newRoot = await engine.GenerateAsyncVersion(serviceType, context.MethodName, cancellationToken);
-        if (newRoot == null)
+        var conversionResult = await engine.GenerateAsyncVersion(serviceType, context.MethodName, cancellationToken);
+        if (conversionResult == null)
         {
             logger.LogInformation("no methods to convert");
             return;
         }
 
-        await File.WriteAllTextAsync(context.OutputPath, newRoot.ToFullString(), cancellationToken);
+        var outputRoot = context.ReplaceExistingMethods
+            ? conversionResult.UpdatedRoot
+            : AppendAsyncMethods(conversionResult);
+
+        await File.WriteAllTextAsync(context.OutputPath, outputRoot.ToFullString(), cancellationToken);
         RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.OutputPath)}");
     }
 
@@ -44,5 +50,23 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
         }
         var parameters = JsonSerializer.Deserialize<AsyncConversionParameters>(context);
         await ProcessSolution(solution, parameters, logger, cancellationToken);
+    }
+
+    private static CompilationUnitSyntax AppendAsyncMethods(AsyncConversionResult conversionResult)
+    {
+        var updatedRoot = conversionResult.OriginalRoot;
+        foreach (var grouping in conversionResult.ConvertedMethods.GroupBy(m => m.OriginalMethod.Parent))
+        {
+            if (grouping.Key is not ClassDeclarationSyntax classDeclaration)
+            {
+                continue;
+            }
+
+            var asyncMethods = grouping.Select(m => m.AsyncMethod).ToArray();
+            var newClass = classDeclaration.AddMembers(asyncMethods);
+            updatedRoot = (CompilationUnitSyntax)updatedRoot.ReplaceNode(classDeclaration, newClass);
+        }
+
+        return updatedRoot;
     }
 }

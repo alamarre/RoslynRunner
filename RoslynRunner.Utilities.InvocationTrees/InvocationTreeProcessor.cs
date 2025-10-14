@@ -24,12 +24,11 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
         var symbol = await FindSymbol(solution, parameters.StartingSymbol,
             cancellationToken);
 
-        InvocationRoot? results = null;
-        List<InvocationMethod> allMethods = new();
+        InvocationTreeResult invocationTreeResult;
         if (parameters.UseCache)
         {
             var cache = await CachedSymbolFinder.FromCache(solution);
-            (results, allMethods) = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
+            invocationTreeResult = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
                 cachedSymbolFinder: cache,
                 startingType: (INamedTypeSymbol)symbol!,
                 solution: solution,
@@ -39,7 +38,7 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
         }
         else
         {
-            (results, allMethods) =
+            invocationTreeResult =
                 await InvocationTreeBuilder.BuildInvocationTreeAsync(
                     startingType: (INamedTypeSymbol)symbol!,
                     solution: solution,
@@ -48,6 +47,8 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                     cancellationToken: cancellationToken);
 
         }
+        var results = invocationTreeResult.Root;
+        var allMethods = invocationTreeResult.AllMethods.ToList();
         var runContext = RunContextAccessor.RunContext;
 
         if (parameters.Diagrams != null)
