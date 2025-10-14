@@ -115,7 +115,7 @@ public class SampleRefactorTests
 
     private static async Task<HttpResponseMessage> ValidateRun(RunCommand runCommand)
     {
-        var response = await AppContext.HttpClient.PostAsJsonAsync("http://localhost:5000/runs", runCommand);
+        var response = await AppContext.HttpClient.PostAsJsonAsync("runs", runCommand);
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
 
         var run = await response.Content.ReadFromJsonAsync<Run>(new JsonSerializerOptions
@@ -124,10 +124,10 @@ public class SampleRefactorTests
         });
         Assert.That(run, Is.Not.Null);
         Assert.That(run?.RunId, Is.Not.EqualTo(Guid.Empty));
-        HttpResponseMessage runResponse = await AppContext.HttpClient.GetAsync($"http://localhost:5000/runs/{run.RunId}");
+        HttpResponseMessage runResponse = await AppContext.HttpClient.GetAsync($"runs/{run.RunId}");
         while ((int)runResponse.StatusCode == StatusCodes.Status202Accepted)
         {
-            runResponse = await AppContext.HttpClient.GetAsync($"http://localhost:5000/runs/{run.RunId}");
+            runResponse = await AppContext.HttpClient.GetAsync($"runs/{run.RunId}");
         }
         Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
         return runResponse;
