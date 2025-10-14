@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
+using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
