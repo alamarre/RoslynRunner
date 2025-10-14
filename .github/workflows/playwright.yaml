@@ -5,6 +5,8 @@ jobs:
     test:
         timeout-minutes: 60
         runs-on: ubuntu-latest
+        env:
+            RUN_PLAYWRIGHT_TESTS: "true"
         steps:
             - uses: actions/checkout@v4
             - name: Setup dotnet
@@ -18,5 +20,5 @@ jobs:
             - name: Build the legacy sample
               run: dotnet build
               working-directory: samples/LegacyWebApp
-            - name: Run your tests
-              run: dotnet test
+            - name: Run Playwright tests
+              run: dotnet test --filter "Category=Playwright"

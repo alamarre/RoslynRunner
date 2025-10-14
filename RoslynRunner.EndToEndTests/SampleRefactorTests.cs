@@ -1,17 +1,22 @@
-﻿using Microsoft.Playwright;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Microsoft.Playwright;
+using NUnit.Framework;
 using RoslynRunner.UI.Pages;
-using System.Net.Http;
+using RoslynRunner;
 
 namespace RoslynRunner.EndToEndTests;
 
 [NonParallelizable]
 [TestFixture]
+[Category("Playwright")]
 public class Tests : PageTest
 {
-    const int WaitTime = 30000;
+    private const int WaitTime = 30000;
 
     [Test]
-    [Ignore("selector timing out in CI")]
     public async Task UiCanRunSampleConversion()
     {
         await Page.GotoAsync(RunnerContext.BaseUrl);
@@ -51,11 +56,12 @@ public class Tests : PageTest
         var runs = await runResult.FromJson<List<RunParameters>>();
         Assert.That(runs?.Count, Is.AtLeast(1));
 
-        var run = runs.Last(r => r.RunCommand.ProcessorSolution == legacyWebAppConverterCsproj);
+        var run = runs!.Last(r => r.RunCommand.ProcessorSolution == legacyWebAppConverterCsproj);
         Assert.That(run.RunId, Is.Not.EqualTo(Guid.Empty));
         var runResponse = await RunnerContext.ApiRequestContext.GetAsync($"/runs/{run.RunId}");
         Assert.That(runResponse.Status, Is.EqualTo(200));
         var json = await runResponse.JsonAsync();
+        Assert.That(json, Is.Not.Null);
         Assert.That(File.Exists(targetFile), Is.True);
     }
 }
