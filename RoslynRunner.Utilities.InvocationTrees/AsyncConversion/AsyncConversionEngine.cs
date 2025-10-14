@@ -113,18 +113,32 @@ public class AsyncConversionEngine
 
     private static bool ParametersMatch(ImmutableArray<IParameterSymbol> original, ImmutableArray<IParameterSymbol> candidate)
     {
-        if (candidate.Length < original.Length)
+        static IEnumerable<IParameterSymbol> RequiredParameters(ImmutableArray<IParameterSymbol> parameters) =>
+            parameters.Where(p => !p.HasExplicitDefaultValue);
+
+        var originalRequired = RequiredParameters(original).ToArray();
+        var candidateRequired = RequiredParameters(candidate).ToArray();
+
+        if (originalRequired.Length != candidateRequired.Length)
+        {
             return false;
-        for (int i = 0; i < original.Length; i++)
-        {
-            if (!original[i].Type.Equals(candidate[i].Type, SymbolEqualityComparer.Default))
-                return false;
         }
-        for (int i = original.Length; i < candidate.Length; i++)
+
+        for (int i = 0; i < originalRequired.Length; i++)
         {
-            if (!candidate[i].HasExplicitDefaultValue)
+            if (!originalRequired[i].Type.Equals(candidateRequired[i].Type, SymbolEqualityComparer.Default))
+            {
                 return false;
+            }
         }
+
+        // Ensure candidate's additional parameters (if any) are optional so the rewritten invocation remains valid.
+        if (candidate.Length > candidateRequired.Length &&
+            candidate.Skip(candidateRequired.Length).Any(p => !p.HasExplicitDefaultValue))
+        {
+            return false;
+        }
+
         return true;
     }
 }
@@ -192,15 +206,28 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
         {
             if (_alts.TryGetValue(operation.TargetMethod, out var alt))
             {
-                var expression = node.Expression is MemberAccessExpressionSyntax ma ?
-                    ma.WithName(SyntaxFactory.IdentifierName(alt.Name)) : node.Expression;
-                var newInvocation = node.WithExpression(expression)
-                    .WithArgumentList(node.ArgumentList.AddArguments(SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))));
+                var expression = node.Expression is MemberAccessExpressionSyntax ma
+                    ? ma.WithName(SyntaxFactory.IdentifierName(alt.Name))
+                    : node.Expression;
+
+                var newInvocation = node.WithExpression(expression);
+
+                if (alt.Parameters.Any(p =>
+                        p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                        == "global::System.Threading.CancellationToken"))
+                {
+                    newInvocation = newInvocation.WithArgumentList(
+                        node.ArgumentList.AddArguments(
+                            SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))));
+                }
+
                 return SyntaxFactory.AwaitExpression(newInvocation);
             }
             if (_methods.Contains(operation.TargetMethod))
             {
-                var newInvocation = node.WithArgumentList(node.ArgumentList.AddArguments(SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))));
+                var newInvocation = node.WithArgumentList(
+                    node.ArgumentList.AddArguments(
+                        SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))));
                 return SyntaxFactory.AwaitExpression(newInvocation);
             }
         }

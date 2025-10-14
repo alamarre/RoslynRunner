@@ -54,7 +54,16 @@ public static class CompilationTools
 
         if (!result.Success)
         {
-            return null;
+            var diagnostics = result.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => $"{d.Id}: {d.GetMessage()}")
+                .ToArray();
+
+            var message = diagnostics.Length == 0
+                ? "Unknown compilation error while emitting in-memory assembly."
+                : $"Compilation failed with {diagnostics.Length} error(s): {string.Join("; ", diagnostics)}";
+
+            throw new InvalidOperationException(message);
         }
 
         assemblyStream.Seek(0, SeekOrigin.Begin);
