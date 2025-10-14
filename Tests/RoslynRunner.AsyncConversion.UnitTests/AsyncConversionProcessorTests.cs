@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -10,6 +9,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using NUnit.Framework;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
@@ -20,350 +20,369 @@ namespace RoslynRunner.AsyncConversion.UnitTests;
 public class AsyncConversionProcessorTests
 {
     [Test]
-    public async Task ProcessSolution_GeneratesAsyncRecursiveServiceFileWithAwaitedCalls()
+    public async Task ProcessSolution_UpdatesDependencyChainAcrossDocuments()
     {
-        var setup = CreateAsyncConversionSolution();
-        using var workspace = setup.Workspace;
-        var solution = setup.Solution;
-        var tempDirectory = setup.TempDirectory;
-
-        var outputDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(outputDirectory);
-        var outputFile = Path.Combine(outputDirectory, "RecursiveServiceAsync.cs");
-
+        await using var environment = await LegacyWebAppTestEnvironment.CreateAsync().ConfigureAwait(false);
         var processor = new AsyncConversionProcessor();
-        var parameters = new AsyncConversionParameters(outputFile, "Sample.RecursiveService");
+
+        var outputFile = Path.Combine(environment.TempDirectory, "LegacyWeatherServicePreview.cs");
+        var branchName = environment.CreateBranchName();
+
+        var parameters = new AsyncConversionParameters(
+            outputFile,
+            "LegacyWebApp.Services.LegacyWeatherService",
+            MethodName: "GetWeatherReport",
+            ReplaceExistingMethods: true,
+            BranchName: branchName);
 
         var runContext = new RunContext(Guid.NewGuid());
         RunContextAccessor.RunContext = runContext;
 
-        List<string> outputMessages;
-        List<string> errorMessages;
         try
         {
-            await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
-            outputMessages = runContext.Output.ToList();
-            errorMessages = runContext.Errors.ToList();
+            await processor.ProcessSolution(environment.Solution, parameters, NullLogger.Instance, CancellationToken.None)
+                .ConfigureAwait(false);
         }
         finally
         {
             RunContextAccessor.Clear();
         }
 
-        try
-        {
-            Assert.That(File.Exists(outputFile), Is.True, "Processor should create the async output file.");
-            Assert.That(errorMessages, Is.Empty, "Processor should not report errors.");
-            Assert.That(outputMessages, Does.Contain($"Created file: {Path.GetFullPath(outputFile)}"),
-                "Run context output should include the generated file path.");
+        Assert.That(File.Exists(outputFile), Is.True, "Processor should create a preview file.");
+        Assert.That(runContext.Output, Does.Contain($"Created file: {Path.GetFullPath(outputFile)}"));
+        Assert.That(runContext.Output, Does.Contain($"Updated branch: {branchName}"));
 
-            var generatedCode = await File.ReadAllTextAsync(outputFile);
-            var root = CSharpSyntaxTree.ParseText(generatedCode).GetCompilationUnitRoot();
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .Single(node => node.Identifier.Text == "RecursiveService");
+        var serviceContent = await environment.ReadFileFromBranchAsync(
+            branchName,
+            environment.GetSampleRelativePath("Services", "LegacyWeatherService.cs")).ConfigureAwait(false);
+        var repositoryContent = await environment.ReadFileFromBranchAsync(
+            branchName,
+            environment.GetSampleRelativePath("Data", "LegacyWeatherRepository.cs")).ConfigureAwait(false);
 
-            var getValues = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Single(method => method.Identifier.Text == "GetValues");
-            Assert.That(getValues.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)),
-                "GetValues should be marked async.");
-            Assert.That(getValues.ReturnType.ToString(),
-                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<int>>"));
-            Assert.That(getValues.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "GetValues should accept a cancellation token.");
+        var serviceRoot = CSharpSyntaxTree.ParseText(serviceContent).GetCompilationUnitRoot();
+        var serviceClass = serviceRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(node => node.Identifier.Text == "LegacyWeatherService");
 
-            var getPrimary = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Single(method => method.Identifier.Text == "GetPrimary");
-            Assert.That(getPrimary.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)),
-                "GetPrimary should be marked async.");
-            Assert.That(getPrimary.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "GetPrimary should accept a cancellation token.");
+        var asyncServiceMethod = serviceClass.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.Text == "GetWeatherReport");
+        Assert.That(asyncServiceMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+        Assert.That(asyncServiceMethod.ReturnType.ToString(), Is.EqualTo("System.Threading.Tasks.Task<LegacyWeatherReport>"));
+        Assert.That(asyncServiceMethod.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"), Is.True);
 
-            var queryAwait = getPrimary.DescendantNodes().OfType<AwaitExpressionSyntax>()
-                .FirstOrDefault(expr => expr.Expression is InvocationExpressionSyntax invocation &&
-                                         invocation.Expression.ToString().Contains("QueryAsync", StringComparison.Ordinal));
-            Assert.That(queryAwait, Is.Not.Null, "GetPrimary should await the async query method.");
+        var serviceAwaitExpressions = asyncServiceMethod.DescendantNodes().OfType<AwaitExpressionSyntax>().ToArray();
+        Assert.That(serviceAwaitExpressions.Length, Is.EqualTo(2), "Service should await both repository calls.");
+        Assert.That(
+            serviceAwaitExpressions.All(expr => expr.Expression.ToString().Contains("cancellationToken", StringComparison.Ordinal)),
+            "Awaited calls should forward the cancellation token.");
 
-            var invocationExpression = (InvocationExpressionSyntax)queryAwait!.Expression;
-            Assert.That(invocationExpression.ArgumentList.Arguments.Last().Expression.ToString(),
-                Is.EqualTo("cancellationToken"),
-                "The generated async call should forward the cancellation token.");
-        }
-        finally
-        {
-            if (Directory.Exists(outputDirectory))
-            {
-                Directory.Delete(outputDirectory, recursive: true);
-            }
+        var repositoryRoot = CSharpSyntaxTree.ParseText(repositoryContent).GetCompilationUnitRoot();
+        var repositoryClass = repositoryRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(node => node.Identifier.Text == "LegacyWeatherRepository");
 
-            if (Directory.Exists(tempDirectory))
-            {
-                Directory.Delete(tempDirectory, recursive: true);
-            }
-        }
+        var primaryMethod = repositoryClass.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.Text == "GetPrimaryObservation");
+        Assert.That(primaryMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+        Assert.That(primaryMethod.ReturnType.ToString(), Is.EqualTo("System.Threading.Tasks.Task<LegacyWeatherObservation>"));
+        Assert.That(primaryMethod.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"), Is.True);
+        Assert.That(
+            primaryMethod.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Any(invocation => invocation.Expression.ToString().Contains("GetLatestObservationAsync", StringComparison.Ordinal)),
+            "Repository method should invoke the async database call.");
+
+        var secondaryMethod = repositoryClass.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.Text == "GetSecondaryObservation");
+        Assert.That(secondaryMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+        Assert.That(
+            secondaryMethod.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Any(invocation => invocation.Expression.ToString().Contains("GetLatestObservationAsync", StringComparison.Ordinal)),
+            "Secondary repository method should invoke the async database call.");
+    }
+
+    [Test]
+    public async Task ProcessSolution_AppendsAsyncMethodsWhenRequested()
+    {
+        await using var environment = await LegacyWebAppTestEnvironment.CreateAsync().ConfigureAwait(false);
+        var processor = new AsyncConversionProcessor();
+
+        var outputFile = Path.Combine(environment.TempDirectory, "LegacyWeatherServiceAppendPreview.cs");
+        var branchName = environment.CreateBranchName();
+
+        var parameters = new AsyncConversionParameters(
+            outputFile,
+            "LegacyWebApp.Services.LegacyWeatherService",
+            MethodName: "GetWeatherReport",
+            ReplaceExistingMethods: false,
+            BranchName: branchName);
+
+        await processor.ProcessSolution(environment.Solution, parameters, NullLogger.Instance, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        var serviceContent = await environment.ReadFileFromBranchAsync(
+            branchName,
+            environment.GetSampleRelativePath("Services", "LegacyWeatherService.cs")).ConfigureAwait(false);
+
+        var repositoryContent = await environment.ReadFileFromBranchAsync(
+            branchName,
+            environment.GetSampleRelativePath("Data", "LegacyWeatherRepository.cs")).ConfigureAwait(false);
+
+        var serviceRoot = CSharpSyntaxTree.ParseText(serviceContent).GetCompilationUnitRoot();
+        var serviceClass = serviceRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(node => node.Identifier.Text == "LegacyWeatherService");
+        var overloads = serviceClass.Members.OfType<MethodDeclarationSyntax>()
+            .Where(method => method.Identifier.Text == "GetWeatherReport")
+            .ToArray();
+
+        Assert.That(overloads.Length, Is.EqualTo(2), "Both sync and async versions should be present.");
+        Assert.That(overloads.Count(method => method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword))), Is.EqualTo(1));
+        Assert.That(overloads.Count(method => method.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken")), Is.EqualTo(1));
+        Assert.That(overloads.Count(method => method.ParameterList.Parameters.Count == 1), Is.EqualTo(1));
+
+        var repositoryRoot = CSharpSyntaxTree.ParseText(repositoryContent).GetCompilationUnitRoot();
+        var repositoryClass = repositoryRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(node => node.Identifier.Text == "LegacyWeatherRepository");
+        var repositoryOverloads = repositoryClass.Members.OfType<MethodDeclarationSyntax>()
+            .Where(method => method.Identifier.Text == "GetPrimaryObservation")
+            .ToArray();
+
+        Assert.That(repositoryOverloads.Length, Is.EqualTo(2), "Repository should include both method variants.");
+        Assert.That(repositoryOverloads.Count(method => method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword))), Is.EqualTo(1));
     }
 
     [Test]
     public async Task GenerateAsyncVersion_ReturnsNullWhenNoEligibleMethods()
     {
-        var setup = CreateAsyncConversionSolution();
-        using var workspace = setup.Workspace;
-        var solution = setup.Solution;
-        var tempDirectory = setup.TempDirectory;
+        await using var environment = await LegacyWebAppTestEnvironment.CreateAsync().ConfigureAwait(false);
 
-        try
-        {
-            var cache = await CachedSymbolFinder.FromCache(solution);
-            var serviceType = cache.GetSymbolByMetadataName("Sample.TrivialService") as INamedTypeSymbol;
-            Assert.That(serviceType, Is.Not.Null);
+        var cache = await CachedSymbolFinder.FromCache(environment.Solution).ConfigureAwait(false);
+        var serviceType = cache.GetSymbolByMetadataName("LegacyWebApp.Services.LegacyTrivialService") as INamedTypeSymbol;
+        Assert.That(serviceType, Is.Not.Null);
 
-            var engine = new AsyncConversionEngine(cache, solution);
-            var conversionResult = await engine.GenerateAsyncVersion(serviceType!, methodName: null, CancellationToken.None);
+        var engine = new AsyncConversionEngine(cache, environment.Solution);
+        var conversionResult = await engine.GenerateAsyncVersion(serviceType!, methodName: null, CancellationToken.None)
+            .ConfigureAwait(false);
 
-            Assert.That(conversionResult, Is.Null);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDirectory))
-            {
-                Directory.Delete(tempDirectory, recursive: true);
-            }
-        }
+        Assert.That(conversionResult, Is.Null);
     }
 
     [Test]
     public async Task GenerateAsyncVersion_UsesProvidedInvocationTreeResult()
     {
-        var setup = CreateAsyncConversionSolution();
-        using var workspace = setup.Workspace;
-        var solution = setup.Solution;
-        var tempDirectory = setup.TempDirectory;
+        await using var environment = await LegacyWebAppTestEnvironment.CreateAsync().ConfigureAwait(false);
 
-        try
-        {
-            var cache = await CachedSymbolFinder.FromCache(solution);
-            var serviceType = cache.GetSymbolByMetadataName("Sample.RecursiveService") as INamedTypeSymbol;
-            Assert.That(serviceType, Is.Not.Null);
+        var cache = await CachedSymbolFinder.FromCache(environment.Solution).ConfigureAwait(false);
+        var serviceType = cache.GetSymbolByMetadataName("LegacyWebApp.Services.LegacyWeatherService") as INamedTypeSymbol;
+        Assert.That(serviceType, Is.Not.Null);
 
-            var treeResult = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
-                cache,
-                serviceType!,
-                solution,
-                methodFilter: null,
-                cancellationToken: CancellationToken.None);
+        var treeResult = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
+            cache,
+            serviceType!,
+            environment.Solution,
+            methodFilter: null,
+            cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
-            var engine = new AsyncConversionEngine(cache, solution);
-            var conversionResult = await engine.GenerateAsyncVersion(
+        var engine = new AsyncConversionEngine(cache, environment.Solution);
+        var conversionResult = await engine.GenerateAsyncVersion(
                 serviceType!,
                 methodName: null,
                 CancellationToken.None,
-                treeResult);
+                treeResult)
+            .ConfigureAwait(false);
 
-            Assert.That(conversionResult, Is.Not.Null);
-            Assert.That(conversionResult!.ConvertedMethods, Is.Not.Empty);
+        Assert.That(conversionResult, Is.Not.Null);
+        Assert.That(conversionResult!.ConvertedMethods, Is.Not.Empty);
 
-            var asyncMethod = conversionResult.ConvertedMethods
-                .Single(method => method.AsyncMethod.Identifier.Text == "GetPrimary");
-            Assert.That(asyncMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDirectory))
-            {
-                Directory.Delete(tempDirectory, recursive: true);
-            }
-        }
+        var asyncMethod = conversionResult.ConvertedMethods
+            .Single(method => method.AsyncMethod.Identifier.Text == "GetWeatherReport");
+        Assert.That(asyncMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
     }
 
-    [Test]
-    public async Task ProcessSolution_CanAppendAsyncMethodsAlongsideOriginals()
+    private sealed class LegacyWebAppTestEnvironment : IAsyncDisposable
     {
-        var setup = CreateAsyncConversionSolution();
-        using var workspace = setup.Workspace;
-        var solution = setup.Solution;
-        var tempDirectory = setup.TempDirectory;
-
-        var outputDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(outputDirectory);
-        var outputFile = Path.Combine(outputDirectory, "RecursiveServiceAsync.cs");
-
-        var processor = new AsyncConversionProcessor();
-        var parameters = new AsyncConversionParameters(
-            outputFile,
-            "Sample.RecursiveService",
-            ReplaceExistingMethods: false);
-
-        var runContext = new RunContext(Guid.NewGuid());
-        RunContextAccessor.RunContext = runContext;
-
-        try
+        private LegacyWebAppTestEnvironment(AdhocWorkspace workspace, string tempDirectory)
         {
-            await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
-
-            Assert.That(File.Exists(outputFile), Is.True, "Processor should create the async output file.");
-
-            var generatedCode = await File.ReadAllTextAsync(outputFile);
-            var root = CSharpSyntaxTree.ParseText(generatedCode).GetCompilationUnitRoot();
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .Single(node => node.Identifier.Text == "RecursiveService");
-
-            var getValuesMethods = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Where(method => method.Identifier.Text == "GetValues")
-                .ToArray();
-
-            Assert.That(getValuesMethods.Length, Is.EqualTo(2), "Both sync and async variants should be present.");
-
-            var asyncVariant = getValuesMethods.Single(method => method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
-            Assert.That(asyncVariant.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "Async method should accept a cancellation token.");
-            Assert.That(asyncVariant.ReturnType.ToString(),
-                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<int>>"));
-
-            var syncVariant = getValuesMethods.Single(method => !method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
-            Assert.That(syncVariant.ParameterList.Parameters.Count, Is.EqualTo(1),
-                "Original method signature should remain unchanged.");
+            Workspace = workspace;
+            TempDirectory = tempDirectory;
         }
-        finally
-        {
-            RunContextAccessor.Clear();
 
-            if (Directory.Exists(outputDirectory))
+        public AdhocWorkspace Workspace { get; }
+
+        public Solution Solution => Workspace.CurrentSolution;
+
+        public string TempDirectory { get; }
+
+        public string RepositoryPath => TempDirectory;
+
+        public static async Task<LegacyWebAppTestEnvironment> CreateAsync()
+        {
+            var repositoryRoot = FindRepositoryRoot();
+            var sourcePath = Path.Combine(repositoryRoot, "samples", "LegacyWebApp");
+            var tempDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
+
+            CopyDirectory(sourcePath, tempDirectory);
+
+            var requiredServicePath = Path.Combine(
+                tempDirectory,
+                "LegacyWebApp",
+                "LegacyWebApp",
+                "Services",
+                "LegacyWeatherService.cs");
+            if (!File.Exists(requiredServicePath))
             {
-                Directory.Delete(outputDirectory, recursive: true);
+                throw new DirectoryNotFoundException($"Missing expected file at '{requiredServicePath}'.");
             }
 
-            if (Directory.Exists(tempDirectory))
+            await RunGitAsync(tempDirectory, "init").ConfigureAwait(false);
+            await RunGitAsync(tempDirectory, "config user.name \"Test User\"").ConfigureAwait(false);
+            await RunGitAsync(tempDirectory, "config user.email \"test@example.com\"").ConfigureAwait(false);
+            await RunGitAsync(tempDirectory, "add .").ConfigureAwait(false);
+            await RunGitAsync(tempDirectory, "commit -m \"Initial\"").ConfigureAwait(false);
+
+            var workspace = new AdhocWorkspace();
+            var projectId = ProjectId.CreateNewId();
+            var references = new[]
             {
-                Directory.Delete(tempDirectory, recursive: true);
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location),
+            };
+
+            var projectInfo = ProjectInfo.Create(
+                projectId,
+                VersionStamp.Create(),
+                "LegacyWebApp",
+                "LegacyWebApp",
+                LanguageNames.CSharp,
+                filePath: Path.Combine(tempDirectory, "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp.csproj"),
+                metadataReferences: references);
+
+            var solutionInfo = SolutionInfo.Create(
+                SolutionId.CreateNewId(),
+                VersionStamp.Create(),
+                Path.Combine(tempDirectory, "LegacyWebApp", "LegacyWebApp.sln"),
+                projects: new[] { projectInfo });
+
+            workspace.AddSolution(solutionInfo);
+
+            foreach (var relativePath in GetDocumentPaths())
+            {
+                var fullPath = Path.Combine(tempDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                var text = SourceText.From(await File.ReadAllTextAsync(fullPath).ConfigureAwait(false));
+                var documentInfo = DocumentInfo.Create(
+                    DocumentId.CreateNewId(projectId),
+                    Path.GetFileName(fullPath),
+                    filePath: fullPath,
+                    loader: TextLoader.From(TextAndVersion.Create(text, VersionStamp.Create())));
+                workspace.AddDocument(documentInfo);
             }
+
+            return new LegacyWebAppTestEnvironment(workspace, tempDirectory);
         }
-    }
 
-    private static (AdhocWorkspace Workspace, Solution Solution, string TempDirectory) CreateAsyncConversionSolution()
-    {
-        var workspace = new AdhocWorkspace();
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"async-solution-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDirectory);
+        public string CreateBranchName() => $"async-conversion/{Guid.NewGuid():N}";
 
-        var solutionPath = Path.Combine(tempDirectory, "Test.sln");
-        var projectPath = Path.Combine(tempDirectory, "TestProject.csproj");
-        File.WriteAllText(solutionPath, string.Empty);
-        File.WriteAllText(projectPath, string.Empty);
-
-        var projectId = ProjectId.CreateNewId();
-        var references = new[]
+        public string GetSampleRelativePath(params string[] segments)
         {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location)
+            var parts = new List<string> { "LegacyWebApp", "LegacyWebApp" };
+            parts.AddRange(segments);
+            return string.Join('/', parts);
+        }
+
+        public async Task<string> ReadFileFromBranchAsync(string branchName, string relativePath)
+        {
+            var pathArgument = relativePath.Replace('\\', '/');
+            return await RunGitAsync(RepositoryPath, $"show {branchName}:{pathArgument}").ConfigureAwait(false);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Workspace.Dispose();
+            try
+            {
+                Directory.Delete(TempDirectory, recursive: true);
+            }
+            catch
+            {
+                // Ignore cleanup failures during test runs.
+            }
+
+            await Task.CompletedTask;
+        }
+
+        private static IEnumerable<string> GetDocumentPaths() => new[]
+        {
+            "LegacyWebApp/LegacyWebApp/Services/LegacyWeatherService.cs",
+            "LegacyWebApp/LegacyWebApp/Services/LegacyWeatherReport.cs",
+            "LegacyWebApp/LegacyWebApp/Services/LegacyTrivialService.cs",
+            "LegacyWebApp/LegacyWebApp/Data/LegacyWeatherRepository.cs",
+            "LegacyWebApp/LegacyWebApp/Data/LegacyWeatherDatabase.cs",
+            "LegacyWebApp/LegacyWebApp/Data/LegacyWeatherObservation.cs",
         };
 
-        var projectInfo = ProjectInfo.Create(
-            projectId,
-            VersionStamp.Create(),
-            "TestProject",
-            "TestProject",
-            LanguageNames.CSharp,
-            filePath: projectPath,
-            metadataReferences: references);
-
-        var solutionInfo = SolutionInfo.Create(
-            SolutionId.CreateNewId(),
-            VersionStamp.Create(),
-            solutionPath,
-            projects: new[] { projectInfo });
-
-        workspace.AddSolution(solutionInfo);
-
-        var documentId = DocumentId.CreateNewId(projectId);
-        var sourceText = SourceText.From(GetTestSource(), Encoding.UTF8);
-        var documentInfo = DocumentInfo.Create(
-            documentId,
-            "RecursiveService.cs",
-            filePath: Path.Combine(tempDirectory, "RecursiveService.cs"),
-            loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())));
-
-        workspace.AddDocument(documentInfo);
-
-        return (workspace, workspace.CurrentSolution, tempDirectory);
-    }
-
-    private static string GetTestSource() => @"using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace Sample;
-
-public interface IRecursiveConnection
-{
-    IEnumerable<int> Query(int id);
-    Task<IEnumerable<int>> QueryAsync(int id, CancellationToken cancellationToken = default);
-}
-
-public class RecursiveService
-{
-    private readonly IRecursiveConnection _connection;
-
-    public RecursiveService(IRecursiveConnection connection)
-    {
-        _connection = connection;
-    }
-
-    public IEnumerable<int> GetValues(int id)
-    {
-        return GetPrimary(id);
-    }
-
-    private IEnumerable<int> GetPrimary(int id)
-    {
-        var result = _connection.Query(id);
-        if (result.Any())
+        private static string FindRepositoryRoot()
         {
-            return result;
+            var directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+            while (directory is not null)
+            {
+                var solutionPath = Path.Combine(directory.FullName, "RoslynRunner.sln");
+                if (File.Exists(solutionPath))
+                {
+                    return directory.FullName;
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new InvalidOperationException("Unable to locate repository root.");
         }
 
-        return GetSecondary(id);
-    }
-
-    private IEnumerable<int> GetSecondary(int id)
-    {
-        if (id <= 0)
+        private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
         {
-            return Enumerable.Empty<int>();
+            Directory.CreateDirectory(destinationDirectory);
+
+            foreach (var file in Directory.GetFiles(sourceDirectory))
+            {
+                var destination = Path.Combine(destinationDirectory, Path.GetFileName(file));
+                File.Copy(file, destination, overwrite: true);
+            }
+
+            foreach (var directory in Directory.GetDirectories(sourceDirectory))
+            {
+                var destination = Path.Combine(destinationDirectory, Path.GetFileName(directory));
+                CopyDirectory(directory, destination);
+            }
         }
 
-        return GetPrimary(id - 1);
+        private static async Task<string> RunGitAsync(string workingDirectory, string arguments)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is null)
+            {
+                throw new InvalidOperationException("Failed to start git process.");
+            }
+
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            var output = await outputTask.ConfigureAwait(false);
+            var error = await errorTask.ConfigureAwait(false);
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"git {arguments} failed with exit code {process.ExitCode}:{Environment.NewLine}{error}");
+            }
+
+            return output.ReplaceLineEndings("\n");
+        }
     }
-}
-
-public interface IValuesService
-{
-    IEnumerable<int> GetValues(int id);
-}
-
-public class ValuesService : IValuesService
-{
-    private readonly RecursiveService _recursiveService;
-
-    public ValuesService(RecursiveService recursiveService)
-    {
-        _recursiveService = recursiveService;
-    }
-
-    public IEnumerable<int> GetValues(int id)
-    {
-        return _recursiveService.GetValues(id);
-    }
-}
-
-public class TrivialService
-{
-    public int Echo(int value)
-    {
-        return value;
-    }
-}
-";
 }

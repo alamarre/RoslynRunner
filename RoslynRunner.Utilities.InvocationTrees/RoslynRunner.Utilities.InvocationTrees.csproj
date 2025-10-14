@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\RoslynRunner.Abstractions\RoslynRunner.Abstractions.csproj" />
     <ProjectReference Include="..\RoslynRunner.Core\RoslynRunner.Core.csproj" />
+    <ProjectReference Include="..\RoslynRunner.Git\RoslynRunner.Git.csproj" />
   </ItemGroup>
 </Project>

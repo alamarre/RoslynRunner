@@ -136,13 +136,19 @@ public static class RoslynRunnerMcpTool
         int maxTime = 300,
         CancellationToken cancellationToken = default)
     {
+        var branchName = $"async-conversion/{Guid.NewGuid():N}";
+
         var context = new RunCommand(
             PrimarySolution: targetSolution,
             PersistSolution: false,
             ProcessorSolution: null,
             ProcessorName: "AsyncConverter",
             AssemblyLoadContextPath: null,
-            Context: JsonSerializer.Serialize(new AsyncConversionParameters(outputFile, typeName, methodName)));
+            Context: JsonSerializer.Serialize(new AsyncConversionParameters(
+                outputFile,
+                typeName,
+                methodName,
+                BranchName: branchName)));
 
         Guid runId = await queue.Enqueue(context, cancellationToken);
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
