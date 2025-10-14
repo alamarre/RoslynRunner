@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Build.Locator;
 using ModelContextProtocol.Server;
@@ -49,7 +50,16 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<RunHistoryDbContext>();
-    await dbContext.Database.EnsureCreatedAsync();
+
+    try
+    {
+        await dbContext.Database.EnsureCreatedAsync();
+    }
+    catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+    {
+        // The schema already exists (e.g., when the database was created by a concurrently-started host instance).
+        // Ignore the error so startup remains idempotent.
+    }
 }
 app.UseRouting();
 

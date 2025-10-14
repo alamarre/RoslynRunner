@@ -14,6 +14,7 @@ public class AppContext
         PropertyNameCaseInsensitive = true
     };
     public static string? BaseDirectory = null;
+    private static string? _databasePath;
 
     public static string BaseUrl => HttpClient!.BaseAddress!.ToString();
     public static HttpClient HttpClient { get; set; } = null!;
@@ -35,6 +36,10 @@ public class AppContext
             await RestoreLegacySampleAsync(BaseDirectory);
         }
 
+        var tempDbFile = Path.Combine(Path.GetTempPath(), $"runhistory_tests_{Guid.NewGuid():N}.db");
+        _databasePath = tempDbFile;
+        Environment.SetEnvironmentVariable("ConnectionStrings__RunDatabase", $"Data Source={tempDbFile}");
+
         App = new CustomWebAppFactory();
         HttpClient = App.CreateClient();
         HttpClient.BaseAddress = App.BaseAddress;
@@ -46,8 +51,21 @@ public class AppContext
     [OneTimeTearDown]
     public void TearDown()
     {
-        App?.Dispose();
-        HttpClient?.Dispose();
+        try
+        {
+            App?.Dispose();
+            HttpClient?.Dispose();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ConnectionStrings__RunDatabase", null);
+
+            if (!string.IsNullOrEmpty(_databasePath))
+            {
+                TryDeleteSqliteArtifacts(_databasePath);
+                _databasePath = null;
+            }
+        }
     }
 
     private static async Task RestoreLegacySampleAsync(string baseDirectory)
@@ -85,5 +103,27 @@ public class AppContext
             var stderr = await stderrTask;
             throw new InvalidOperationException($"dotnet restore failed: {stderr}\n{stdout}");
         }
+    }
+
+    private static void TryDeleteSqliteArtifacts(string databasePath)
+    {
+        static void TryDelete(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // Ignore clean-up failures – the temp files will be removed automatically later.
+            }
+        }
+
+        TryDelete(databasePath);
+        TryDelete(databasePath + "-shm");
+        TryDelete(databasePath + "-wal");
     }
 }

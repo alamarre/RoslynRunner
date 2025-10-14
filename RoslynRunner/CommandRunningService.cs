@@ -101,7 +101,7 @@ public class CommandRunningService(
     {
         if (!_taskRuns.TryGetValue(id, out var tcs))
         {
-            return Result.NotFound($"Task with ID {id} not found.");
+            return Result.Unavailable();
         }
         try
         {
