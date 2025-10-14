@@ -39,7 +39,10 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
             : AppendAsyncMethods(conversionResult);
 
         await File.WriteAllTextAsync(context.OutputPath, outputRoot.ToFullString(), cancellationToken);
-        RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.OutputPath)}");
+        if (RunContextAccessor.TryGet(out var runContext) && runContext is not null)
+        {
+            runContext.Output.Add($"Created file: {Path.GetFullPath(context.OutputPath)}");
+        }
     }
 
     public async Task ProcessSolution(Solution solution, string? context, ILogger logger, CancellationToken cancellationToken)

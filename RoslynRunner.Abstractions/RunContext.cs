@@ -14,6 +14,12 @@ public static class RunContextAccessor
 {
     private static readonly AsyncLocal<RunContext?> _context = new();
 
+    public static bool TryGet(out RunContext? runContext)
+    {
+        runContext = _context.Value;
+        return runContext is not null;
+    }
+
     public static RunContext RunContext
     {
         get
