@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -20,13 +22,15 @@ public class AsyncConversionEngine
         _solution = solution;
     }
 
-    public async Task<CompilationUnitSyntax?> GenerateAsyncVersion(
+    public async Task<AsyncConversionResult?> GenerateAsyncVersion(
         INamedTypeSymbol type,
         string? methodName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        InvocationTreeResult? invocationTreeResult = null)
     {
-        var (root, allMethods) = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
+        var treeResult = invocationTreeResult ?? await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
             _cache, type, _solution, methodName, cancellationToken: cancellationToken);
+        var allMethods = treeResult.AllMethods;
 
         HashSet<IMethodSymbol> eligible = new(SymbolEqualityComparer.Default);
         Dictionary<IMethodSymbol, IMethodSymbol> asyncAlts = new(SymbolEqualityComparer.Default);
@@ -59,15 +63,38 @@ public class AsyncConversionEngine
 
         var document = _solution.GetDocument(type.Locations.First().SourceTree)!;
         var model = await document.GetSemanticModelAsync(cancellationToken);
-        var rootNode = await document.GetSyntaxRootAsync(cancellationToken) as CompilationUnitSyntax;
-        if (model == null || rootNode == null)
+        var originalRoot = await document.GetSyntaxRootAsync(cancellationToken) as CompilationUnitSyntax;
+        if (model == null || originalRoot == null)
         {
             return null;
         }
 
         var rewriter = new AsyncRewriter(model, eligible, asyncAlts);
-        var newRoot = (CompilationUnitSyntax)rewriter.Visit(rootNode);
-        return (CompilationUnitSyntax)Formatter.Format(newRoot, document.Project.Solution.Workspace);
+        var visitedRoot = rewriter.Visit(originalRoot);
+        if (visitedRoot is not CompilationUnitSyntax newRoot)
+        {
+            return null;
+        }
+        var formattedRoot = (CompilationUnitSyntax)Formatter.Format(newRoot, document.Project.Solution.Workspace);
+
+        var conversions = rewriter.MethodUpdates
+            .Select(update =>
+            {
+                var asyncMethod = formattedRoot.GetAnnotatedNodes(update.Annotation)
+                    .OfType<MethodDeclarationSyntax>()
+                    .Single();
+                asyncMethod = asyncMethod.WithoutAnnotations(update.Annotation);
+                return new AsyncMethodConversion(update.OriginalMethod, asyncMethod);
+            })
+            .ToImmutableArray();
+
+        if (rewriter.MethodUpdates.Count > 0)
+        {
+            formattedRoot = (CompilationUnitSyntax)formattedRoot.WithoutAnnotations(
+                rewriter.MethodUpdates.Select(m => m.Annotation).ToArray());
+        }
+
+        return new AsyncConversionResult(originalRoot, formattedRoot, conversions, treeResult);
     }
 
     private static IMethodSymbol? GetAsyncAlternative(IMethodSymbol method)
@@ -107,6 +134,9 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
     private readonly SemanticModel _model;
     private readonly HashSet<IMethodSymbol> _methods;
     private readonly Dictionary<IMethodSymbol, IMethodSymbol> _alts;
+    private readonly List<AsyncMethodUpdate> _methodUpdates = new();
+
+    public IReadOnlyList<AsyncMethodUpdate> MethodUpdates => _methodUpdates;
 
     public AsyncRewriter(SemanticModel model, HashSet<IMethodSymbol> methods, Dictionary<IMethodSymbol, IMethodSymbol> alts)
     {
@@ -117,8 +147,13 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
 
     public override SyntaxNode VisitMethodDeclaration(MethodDeclarationSyntax node)
     {
+        var visited = base.VisitMethodDeclaration(node);
+        if (visited is not MethodDeclarationSyntax updated)
+        {
+            return visited ?? node;
+        }
+
         var symbol = _model.GetDeclaredSymbol(node);
-        var updated = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node);
         if (symbol != null && _methods.Contains(symbol))
         {
             if (!updated.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)))
@@ -142,6 +177,10 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
                     ret.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat) + ">";
                 updated = updated.WithReturnType(SyntaxFactory.ParseTypeName(returnType));
             }
+
+            var annotation = new SyntaxAnnotation();
+            updated = updated.WithAdditionalAnnotations(annotation);
+            _methodUpdates.Add(new AsyncMethodUpdate(node, annotation));
         }
         return updated;
     }
@@ -165,6 +204,8 @@ internal class AsyncRewriter : CSharpSyntaxRewriter
                 return SyntaxFactory.AwaitExpression(newInvocation);
             }
         }
-        return base.VisitInvocationExpression(node);
+        return base.VisitInvocationExpression(node) ?? node;
     }
 }
+
+internal sealed record AsyncMethodUpdate(MethodDeclarationSyntax OriginalMethod, SyntaxAnnotation Annotation);

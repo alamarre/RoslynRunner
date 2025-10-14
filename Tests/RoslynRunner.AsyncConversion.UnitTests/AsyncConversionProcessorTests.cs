@@ -117,12 +117,115 @@ public class AsyncConversionProcessorTests
             Assert.That(serviceType, Is.Not.Null);
 
             var engine = new AsyncConversionEngine(cache, solution);
-            var newRoot = await engine.GenerateAsyncVersion(serviceType!, methodName: null, CancellationToken.None);
+            var conversionResult = await engine.GenerateAsyncVersion(serviceType!, methodName: null, CancellationToken.None);
 
-            Assert.That(newRoot, Is.Null);
+            Assert.That(conversionResult, Is.Null);
         }
         finally
         {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task GenerateAsyncVersion_UsesProvidedInvocationTreeResult()
+    {
+        var setup = CreateAsyncConversionSolution();
+        using var workspace = setup.Workspace;
+        var solution = setup.Solution;
+        var tempDirectory = setup.TempDirectory;
+
+        try
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            var serviceType = cache.GetSymbolByMetadataName("Sample.RecursiveService") as INamedTypeSymbol;
+            Assert.That(serviceType, Is.Not.Null);
+
+            var treeResult = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
+                cache,
+                serviceType!,
+                solution,
+                methodFilter: null,
+                cancellationToken: CancellationToken.None);
+
+            var engine = new AsyncConversionEngine(cache, solution);
+            var conversionResult = await engine.GenerateAsyncVersion(
+                serviceType!,
+                methodName: null,
+                CancellationToken.None,
+                treeResult);
+
+            Assert.That(conversionResult, Is.Not.Null);
+            Assert.That(conversionResult!.ConvertedMethods, Is.Not.Empty);
+
+            var asyncMethod = conversionResult.ConvertedMethods
+                .Single(method => method.AsyncMethod.Identifier.Text == "GetPrimary");
+            Assert.That(asyncMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task ProcessSolution_CanAppendAsyncMethodsAlongsideOriginals()
+    {
+        var setup = CreateAsyncConversionSolution();
+        using var workspace = setup.Workspace;
+        var solution = setup.Solution;
+        var tempDirectory = setup.TempDirectory;
+
+        var outputDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outputDirectory);
+        var outputFile = Path.Combine(outputDirectory, "RecursiveServiceAsync.cs");
+
+        var processor = new AsyncConversionProcessor();
+        var parameters = new AsyncConversionParameters(
+            outputFile,
+            "Sample.RecursiveService",
+            ReplaceExistingMethods: false);
+
+        try
+        {
+            await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
+
+            Assert.That(File.Exists(outputFile), Is.True, "Processor should create the async output file.");
+
+            var generatedCode = await File.ReadAllTextAsync(outputFile);
+            var root = CSharpSyntaxTree.ParseText(generatedCode).GetCompilationUnitRoot();
+            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Single(node => node.Identifier.Text == "RecursiveService");
+
+            var getValuesMethods = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.Text == "GetValues")
+                .ToArray();
+
+            Assert.That(getValuesMethods.Length, Is.EqualTo(2), "Both sync and async variants should be present.");
+
+            var asyncVariant = getValuesMethods.Single(method => method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
+            Assert.That(asyncVariant.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
+                "Async method should accept a cancellation token.");
+            Assert.That(asyncVariant.ReturnType.ToString(),
+                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<int>>"));
+
+            var syncVariant = getValuesMethods.Single(method => !method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
+            Assert.That(syncVariant.ParameterList.Parameters.Count, Is.EqualTo(1),
+                "Original method signature should remain unchanged.");
+        }
+        finally
+        {
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, recursive: true);
+            }
+
             if (Directory.Exists(tempDirectory))
             {
                 Directory.Delete(tempDirectory, recursive: true);

@@ -74,10 +74,10 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             if (serviceType != null)
             {
                 var engine = new AsyncConversionEngine(cache, solution);
-                var newRoot = await engine.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
-                if (newRoot != null)
+                var conversionResult = await engine.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
+                if (conversionResult != null)
                 {
-                    await File.WriteAllTextAsync(context.AsyncOutputPath, newRoot.ToFullString(), cancellationToken);
+                    await File.WriteAllTextAsync(context.AsyncOutputPath, conversionResult.UpdatedRoot.ToFullString(), cancellationToken);
                     RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.AsyncOutputPath)}");
                 }
             }
