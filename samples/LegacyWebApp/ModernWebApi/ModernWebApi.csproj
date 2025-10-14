@@ -3,6 +3,8 @@
     <PackageReference Include="Aspire.Hosting.AppHost" Version="9.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Dapper" Version="2.1.38" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ModernApi.Analyzers\ModernApi.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

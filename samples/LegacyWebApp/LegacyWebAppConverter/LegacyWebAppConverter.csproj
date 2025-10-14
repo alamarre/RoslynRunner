@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <ItemGroup>
         <ProjectReference Include="..\..\..\RoslynRunner.Abstractions\RoslynRunner.Abstractions.csproj" />
+        <ProjectReference Include="..\..\..\RoslynRunner.Utilities.InvocationTrees\RoslynRunner.Utilities.InvocationTrees.csproj" />
     </ItemGroup>
 
     <ItemGroup>
