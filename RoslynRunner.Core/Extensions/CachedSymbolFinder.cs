@@ -34,9 +34,9 @@ public class CachedSymbolFinder
         return SymbolCache.TypeImplementations.TryGetValue(key, out var implementations) ? implementations : null;
     }
 
-    public List<IMethodSymbol>? FindCallers(IOperation operation)
+    public List<IMethodSymbol>? FindCallers(IMethodSymbol method)
     {
-        return SymbolCache.CallerCache.TryGetValue(operation, out var callers) ? callers : null;
+        return SymbolCache.CallerCache.TryGetValue(method, out var callers) ? callers : null;
     }
 
     public MethodData? GetMethodData(IMethodSymbol methodSymbol)

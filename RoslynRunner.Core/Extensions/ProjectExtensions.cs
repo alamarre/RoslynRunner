@@ -21,7 +21,7 @@ public record SymbolCache(
     Dictionary<IMethodSymbol, List<IMethodSymbol>> ImplementationCache,
     Dictionary<string, List<ISymbol>> TypeImplementations,
     Dictionary<string, INamedTypeSymbol> MetadataNameCache,
-    Dictionary<IOperation, List<IMethodSymbol>> CallerCache);
+    Dictionary<IMethodSymbol, List<IMethodSymbol>> CallerCache);
 
 public static class ProjectExtensions
 {
@@ -33,7 +33,7 @@ public static class ProjectExtensions
         Dictionary<IMethodSymbol, MethodData> methodCache = new(SymbolEqualityComparer.Default);
         Dictionary<IMethodSymbol, List<IMethodSymbol>> implementationCache = new(SymbolEqualityComparer.Default);
         Dictionary<string, List<ISymbol>> typeImplementations = new();
-        Dictionary<IOperation, List<IMethodSymbol>> callerCache = new();
+        Dictionary<IMethodSymbol, List<IMethodSymbol>> callerCache = new();
         Dictionary<string, INamedTypeSymbol> metadataNameCache = new();
         Dictionary<string, IMethodSymbol> methodNameCache = new();
 
@@ -184,13 +184,13 @@ public static class ProjectExtensions
                     }
 
                     // Map caller information: record each invocation operation to the method.
-                    foreach (IOperation invocationOperation in invokedOperations)
+                    foreach (IInvocationOperation invocationOperation in invokedOperations.Where(i => i is IInvocationOperation))
                     {
                         List<IMethodSymbol>? callers;
-                        if (!callerCache.TryGetValue(invocationOperation, out callers))
+                        if (!callerCache.TryGetValue(invocationOperation.TargetMethod, out callers))
                         {
                             callers = new List<IMethodSymbol>();
-                            callerCache.Add(invocationOperation, callers);
+                            callerCache.Add(invocationOperation.TargetMethod, callers);
                         }
                         callers.Add(methodSymbol);
                     }
