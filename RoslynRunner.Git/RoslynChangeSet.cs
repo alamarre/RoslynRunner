@@ -88,6 +88,21 @@ public sealed class RoslynChangeSet
         });
     }
 
+    public void TransformDocument(Document document, Func<Document, CancellationToken, Task<Document>> transformation)
+    {
+        if (document is null)
+        {
+            throw new ArgumentNullException(nameof(document));
+        }
+
+        if (transformation is null)
+        {
+            throw new ArgumentNullException(nameof(transformation));
+        }
+
+        AddTransformation(document, transformation);
+    }
+
     private void AddTransformation(Document document, Func<Document, CancellationToken, Task<Document>> transformation)
     {
         if (!_documentChanges.TryGetValue(document.Id, out var change))

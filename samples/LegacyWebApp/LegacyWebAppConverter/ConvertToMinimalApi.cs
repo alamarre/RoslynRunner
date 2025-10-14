@@ -2,6 +2,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
@@ -74,11 +75,15 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
             var serviceType = cache.GetSymbolByMetadataName(context.AsyncTypeName);
             if (serviceType != null)
             {
-                var engine = new AsyncConversionEngine(cache, solution);
-                var conversionResult = await engine.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
+                var generator = new AsyncConversionGenerator(cache, solution);
+                var conversionResult = await generator.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
                 if (conversionResult != null)
                 {
-                    await File.WriteAllTextAsync(context.AsyncOutputPath, conversionResult.UpdatedRoot.ToFullString(), cancellationToken);
+                    var document = conversionResult.Documents.FirstOrDefault();
+                    if (document != null)
+                    {
+                        await File.WriteAllTextAsync(context.AsyncOutputPath, document.UpdatedRoot.ToFullString(), cancellationToken);
+                    }
                     RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.AsyncOutputPath)}");
                 }
             }
