@@ -1,21 +1,49 @@
+using System;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.Simplification;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
+using RoslynRunner.Git;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
 public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParameters>, ISolutionProcessor
 {
+    private readonly Func<string, RoslynChanges> _changesFactory;
+
+    public AsyncConversionProcessor()
+        : this(repositoryPath => new RoslynChanges(repositoryPath))
+    {
+    }
+
+    internal AsyncConversionProcessor(Func<string, RoslynChanges> changesFactory)
+    {
+        _changesFactory = changesFactory ?? throw new ArgumentNullException(nameof(changesFactory));
+    }
+
     public async Task ProcessSolution(Solution solution, AsyncConversionParameters? context, ILogger logger, CancellationToken cancellationToken)
     {
         if (context == null)
         {
             throw new ArgumentException("context required");
+        }
+
+        if (string.IsNullOrWhiteSpace(context.RepositoryPath))
+        {
+            throw new ArgumentException("RepositoryPath is required", nameof(context));
+        }
+
+        if (string.IsNullOrWhiteSpace(context.BranchName))
+        {
+            throw new ArgumentException("BranchName is required", nameof(context));
         }
 
         var cache = await CachedSymbolFinder.FromCache(solution);
@@ -26,20 +54,30 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
             return;
         }
 
-        var engine = new AsyncConversionEngine(cache, solution);
-        var conversionResult = await engine.GenerateAsyncVersion(serviceType, context.MethodName, cancellationToken);
+        var generator = new AsyncConversionGenerator(cache, solution);
+        var conversionResult = await generator.GenerateAsyncVersion(serviceType, context.MethodName, cancellationToken);
         if (conversionResult == null)
         {
             logger.LogInformation("no methods to convert");
             return;
         }
 
-        var outputRoot = context.ReplaceExistingMethods
-            ? conversionResult.UpdatedRoot
-            : AppendAsyncMethods(conversionResult);
+        if (conversionResult.Documents.IsDefaultOrEmpty)
+        {
+            logger.LogInformation("no documents were updated by the async conversion");
+            return;
+        }
 
-        await File.WriteAllTextAsync(context.OutputPath, outputRoot.ToFullString(), cancellationToken);
-        RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.OutputPath)}");
+        var roslynChanges = _changesFactory(context.RepositoryPath);
+        var changeSetId = context.ChangeId ?? BuildChangeSetId(context);
+        var commitMessage = context.CommitMessage ?? BuildCommitMessage(context);
+
+        var changeSet = roslynChanges.NewChangeSet(changeSetId, commitMessage);
+        ApplyDocumentConversions(changeSet, conversionResult.Documents, solution, context.ReplaceExistingMethods);
+
+        await roslynChanges.ApplyAllAsync(context.BranchName, commitMessage, cancellationToken).ConfigureAwait(false);
+
+        RunContextAccessor.RunContext.Output.Add($"Updated branch '{context.BranchName}' with async conversions.");
     }
 
     public async Task ProcessSolution(Solution solution, string? context, ILogger logger, CancellationToken cancellationToken)
@@ -52,21 +90,105 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
         await ProcessSolution(solution, parameters, logger, cancellationToken);
     }
 
-    private static CompilationUnitSyntax AppendAsyncMethods(AsyncConversionResult conversionResult)
+    private static string BuildChangeSetId(AsyncConversionParameters parameters)
     {
-        var updatedRoot = conversionResult.OriginalRoot;
-        foreach (var grouping in conversionResult.ConvertedMethods.GroupBy(m => m.OriginalMethod.Parent))
+        if (!string.IsNullOrWhiteSpace(parameters.ChangeId))
         {
-            if (grouping.Key is not ClassDeclarationSyntax classDeclaration)
-            {
-                continue;
-            }
-
-            var asyncMethods = grouping.Select(m => m.AsyncMethod).ToArray();
-            var newClass = classDeclaration.AddMembers(asyncMethods);
-            updatedRoot = (CompilationUnitSyntax)updatedRoot.ReplaceNode(classDeclaration, newClass);
+            return parameters.ChangeId!;
         }
 
-        return updatedRoot;
+        var methodSuffix = string.IsNullOrWhiteSpace(parameters.MethodName)
+            ? string.Empty
+            : $".{parameters.MethodName}";
+
+        return $"{parameters.TypeName}{methodSuffix}".Replace('`', '_').Replace('.', '_');
+    }
+
+    private static string BuildCommitMessage(AsyncConversionParameters parameters)
+    {
+        if (!string.IsNullOrWhiteSpace(parameters.CommitMessage))
+        {
+            return parameters.CommitMessage!;
+        }
+
+        var methodSuffix = string.IsNullOrWhiteSpace(parameters.MethodName)
+            ? string.Empty
+            : $".{parameters.MethodName}";
+
+        return $"Convert {parameters.TypeName}{methodSuffix} to async";
+    }
+
+    private static void ApplyDocumentConversions(
+        RoslynChangeSet changeSet,
+        ImmutableArray<AsyncDocumentConversion> documents,
+        Solution solution,
+        bool replaceExistingMethods)
+    {
+        foreach (var documentConversion in documents)
+        {
+            var document = solution.GetDocument(documentConversion.DocumentId) ?? documentConversion.Document;
+
+            if (replaceExistingMethods)
+            {
+                ReplaceMethods(changeSet, document, documentConversion.ConvertedMethods);
+            }
+            else
+            {
+                AppendMethods(changeSet, document, documentConversion.ConvertedMethods);
+            }
+        }
+    }
+
+    private static void ReplaceMethods(
+        RoslynChangeSet changeSet,
+        Document document,
+        ImmutableArray<AsyncMethodConversion> conversions)
+    {
+        foreach (var conversion in conversions)
+        {
+            changeSet.ReplaceMethod(document, conversion.OriginalMethod, conversion.AsyncMethod);
+        }
+    }
+
+    private static void AppendMethods(
+        RoslynChangeSet changeSet,
+        Document document,
+        ImmutableArray<AsyncMethodConversion> conversions)
+    {
+        if (conversions.IsDefaultOrEmpty || conversions.Length == 0)
+        {
+            return;
+        }
+
+        changeSet.TransformDocument(document, async (doc, cancellationToken) =>
+        {
+            var root = await doc.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+            if (root is not CompilationUnitSyntax compilationUnit)
+            {
+                return doc;
+            }
+
+            var updatedRoot = compilationUnit;
+
+            foreach (var grouping in conversions.GroupBy(conversion => conversion.OriginalMethod.Parent))
+            {
+                if (grouping.Key is not ClassDeclarationSyntax classDeclaration)
+                {
+                    continue;
+                }
+
+                var asyncMethods = grouping
+                    .Select(conversion => conversion.AsyncMethod.WithAdditionalAnnotations(
+                        Formatter.Annotation,
+                        Simplifier.Annotation,
+                        Simplifier.AddImportsAnnotation))
+                    .ToArray();
+
+                var newClass = classDeclaration.AddMembers(asyncMethods);
+                updatedRoot = (CompilationUnitSyntax)updatedRoot.ReplaceNode(classDeclaration, newClass);
+            }
+
+            return doc.WithSyntaxRoot(updatedRoot);
+        });
     }
 }

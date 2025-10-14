@@ -130,9 +130,11 @@ public static class RoslynRunnerMcpTool
         IRunQueue queue,
         CommandRunningService commandRunningService,
         [Description("The absolute path to the target solution")] string targetSolution,
+        [Description("The absolute path to the repository containing the solution")] string repositoryPath,
         [Description("The fully qualified name of the type to convert")] string typeName,
-        [Description("The output file path for the generated async file")] string outputFile,
+        [Description("The branch name that should contain the async changes")] string branchName,
         [Description("Optional starting method name")] string? methodName = null,
+        [Description("Optional commit message for the generated branch")] string? commitMessage = null,
         int maxTime = 300,
         CancellationToken cancellationToken = default)
     {
@@ -142,7 +144,13 @@ public static class RoslynRunnerMcpTool
             ProcessorSolution: null,
             ProcessorName: "AsyncConverter",
             AssemblyLoadContextPath: null,
-            Context: JsonSerializer.Serialize(new AsyncConversionParameters(outputFile, typeName, methodName)));
+            Context: JsonSerializer.Serialize(new AsyncConversionParameters(
+                repositoryPath,
+                typeName,
+                branchName,
+                methodName,
+                ChangeId: null,
+                CommitMessage: commitMessage)));
 
         Guid runId = await queue.Enqueue(context, cancellationToken);
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);

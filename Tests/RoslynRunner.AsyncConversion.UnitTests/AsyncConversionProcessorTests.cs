@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -10,6 +10,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using NUnit.Framework;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
@@ -19,82 +20,60 @@ namespace RoslynRunner.AsyncConversion.UnitTests;
 
 public class AsyncConversionProcessorTests
 {
-    [Test]
-    public async Task ProcessSolution_GeneratesAsyncRecursiveServiceFileWithAwaitedCalls()
+    private static readonly string[] SampleSourceFiles =
     {
-        var setup = CreateAsyncConversionSolution();
+        Path.Combine("samples", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "Services", "LegacyOrderRepository.cs"),
+        Path.Combine("samples", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "Services", "LegacyOrderFormatter.cs"),
+        Path.Combine("samples", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "Services", "LegacyOrderCoordinator.cs"),
+        Path.Combine("samples", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "Clients", "LegacyOrderClient.cs"),
+        Path.Combine("samples", "LegacyWebApp", "LegacyWebApp", "LegacyWebApp", "Controllers", "SampleController.cs"),
+    };
+
+    [Test]
+    public async Task GenerateAsyncVersion_ConvertsDependencyChainAcrossDocuments()
+    {
+        var setup = await CreateLegacyWebAppSolutionAsync(SampleSourceFiles);
         using var workspace = setup.Workspace;
         var solution = setup.Solution;
         var tempDirectory = setup.TempDirectory;
 
-        var outputDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(outputDirectory);
-        var outputFile = Path.Combine(outputDirectory, "RecursiveServiceAsync.cs");
-
-        var processor = new AsyncConversionProcessor();
-        var parameters = new AsyncConversionParameters(outputFile, "Sample.RecursiveService");
-
-        var runContext = new RunContext(Guid.NewGuid());
-        RunContextAccessor.RunContext = runContext;
-
-        List<string> outputMessages;
-        List<string> errorMessages;
         try
         {
-            await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
-            outputMessages = runContext.Output.ToList();
-            errorMessages = runContext.Errors.ToList();
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            var clientType = cache.GetSymbolByMetadataName("LegacyWebApp.Clients.LegacyOrderClient") as INamedTypeSymbol;
+            Assert.That(clientType, Is.Not.Null, "The LegacyOrderClient type should exist in the workspace.");
+
+            var generator = new AsyncConversionGenerator(cache, solution);
+            var result = await generator.GenerateAsyncVersion(clientType!, "GetFormattedOrders", CancellationToken.None);
+
+            Assert.That(result, Is.Not.Null, "The async conversion should produce a result.");
+            Assert.That(result!.Documents.Length, Is.EqualTo(4), "Four documents should participate in the async conversion.");
+
+            var clientDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Any(cls => cls.Identifier.Text == "LegacyOrderClient"));
+            var clientMethod = clientDocument.ConvertedMethods.Single(m => m.AsyncMethod.Identifier.Text == "GetFormattedOrders");
+            Assert.That(clientMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+            Assert.That(clientMethod.AsyncMethod.ReturnType.ToString(),
+                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<string>>"));
+            Assert.That(clientMethod.AsyncMethod.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"));
+
+            var coordinatorDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Any(cls => cls.Identifier.Text == "LegacyOrderCoordinator"));
+            var coordinatorMethod = coordinatorDocument.ConvertedMethods.Single();
+            Assert.That(coordinatorMethod.AsyncMethod.Body!.ToString(), Does.Contain("await _formatter.FormatOrders"));
+
+            var formatterDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Any(cls => cls.Identifier.Text == "LegacyOrderFormatter"));
+            var formatterMethod = formatterDocument.ConvertedMethods.Single();
+            Assert.That(formatterMethod.AsyncMethod.Body!.ToString(), Does.Contain("await _repository.GetOrderNumbersAsync"));
+
+            var repositoryDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Any(cls => cls.Identifier.Text == "LegacyOrderRepository"));
+            var repositoryMethods = repositoryDocument.ConvertedMethods;
+            Assert.That(repositoryMethods.Any(m => m.AsyncMethod.Identifier.Text == "GetPrimaryOrder"), Is.True);
         }
         finally
         {
-            RunContextAccessor.Clear();
-        }
-
-        try
-        {
-            Assert.That(File.Exists(outputFile), Is.True, "Processor should create the async output file.");
-            Assert.That(errorMessages, Is.Empty, "Processor should not report errors.");
-            Assert.That(outputMessages, Does.Contain($"Created file: {Path.GetFullPath(outputFile)}"),
-                "Run context output should include the generated file path.");
-
-            var generatedCode = await File.ReadAllTextAsync(outputFile);
-            var root = CSharpSyntaxTree.ParseText(generatedCode).GetCompilationUnitRoot();
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .Single(node => node.Identifier.Text == "RecursiveService");
-
-            var getValues = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Single(method => method.Identifier.Text == "GetValues");
-            Assert.That(getValues.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)),
-                "GetValues should be marked async.");
-            Assert.That(getValues.ReturnType.ToString(),
-                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<int>>"));
-            Assert.That(getValues.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "GetValues should accept a cancellation token.");
-
-            var getPrimary = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Single(method => method.Identifier.Text == "GetPrimary");
-            Assert.That(getPrimary.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)),
-                "GetPrimary should be marked async.");
-            Assert.That(getPrimary.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "GetPrimary should accept a cancellation token.");
-
-            var queryAwait = getPrimary.DescendantNodes().OfType<AwaitExpressionSyntax>()
-                .FirstOrDefault(expr => expr.Expression is InvocationExpressionSyntax invocation &&
-                                         invocation.Expression.ToString().Contains("QueryAsync", StringComparison.Ordinal));
-            Assert.That(queryAwait, Is.Not.Null, "GetPrimary should await the async query method.");
-
-            var invocationExpression = (InvocationExpressionSyntax)queryAwait!.Expression;
-            Assert.That(invocationExpression.ArgumentList.Arguments.Last().Expression.ToString(),
-                Is.EqualTo("cancellationToken"),
-                "The generated async call should forward the cancellation token.");
-        }
-        finally
-        {
-            if (Directory.Exists(outputDirectory))
-            {
-                Directory.Delete(outputDirectory, recursive: true);
-            }
-
             if (Directory.Exists(tempDirectory))
             {
                 Directory.Delete(tempDirectory, recursive: true);
@@ -105,7 +84,7 @@ public class AsyncConversionProcessorTests
     [Test]
     public async Task GenerateAsyncVersion_ReturnsNullWhenNoEligibleMethods()
     {
-        var setup = CreateAsyncConversionSolution();
+        var setup = await CreateLegacyWebAppSolutionAsync(SampleSourceFiles);
         using var workspace = setup.Workspace;
         var solution = setup.Solution;
         var tempDirectory = setup.TempDirectory;
@@ -113,13 +92,13 @@ public class AsyncConversionProcessorTests
         try
         {
             var cache = await CachedSymbolFinder.FromCache(solution);
-            var serviceType = cache.GetSymbolByMetadataName("Sample.TrivialService") as INamedTypeSymbol;
-            Assert.That(serviceType, Is.Not.Null);
+            var controllerType = cache.GetSymbolByMetadataName("LegacyWebApp.Controllers.SampleController") as INamedTypeSymbol;
+            Assert.That(controllerType, Is.Not.Null);
 
-            var engine = new AsyncConversionEngine(cache, solution);
-            var conversionResult = await engine.GenerateAsyncVersion(serviceType!, methodName: null, CancellationToken.None);
+            var generator = new AsyncConversionGenerator(cache, solution);
+            var result = await generator.GenerateAsyncVersion(controllerType!, methodName: null, CancellationToken.None);
 
-            Assert.That(conversionResult, Is.Null);
+            Assert.That(result, Is.Null, "Types without async alternatives should not produce conversion results.");
         }
         finally
         {
@@ -131,39 +110,55 @@ public class AsyncConversionProcessorTests
     }
 
     [Test]
-    public async Task GenerateAsyncVersion_UsesProvidedInvocationTreeResult()
+    public async Task ProcessSolution_AppliesChangesToGitBranch()
     {
-        var setup = CreateAsyncConversionSolution();
+        var setup = await CreateLegacyWebAppSolutionAsync(SampleSourceFiles);
         using var workspace = setup.Workspace;
         var solution = setup.Solution;
         var tempDirectory = setup.TempDirectory;
+        var repositoryPath = setup.RepositoryPath;
+
+        var branchName = $"async-orders-{Guid.NewGuid():N}";
 
         try
         {
-            var cache = await CachedSymbolFinder.FromCache(solution);
-            var serviceType = cache.GetSymbolByMetadataName("Sample.RecursiveService") as INamedTypeSymbol;
-            Assert.That(serviceType, Is.Not.Null);
+            InitializeGitRepository(repositoryPath);
 
-            var treeResult = await InvocationTreeBuilder.BuildInvocationTreeWithCacheAsync(
-                cache,
-                serviceType!,
-                solution,
-                methodFilter: null,
-                cancellationToken: CancellationToken.None);
+            var processor = new AsyncConversionProcessor();
+            var parameters = new AsyncConversionParameters(
+                repositoryPath,
+                "LegacyWebApp.Clients.LegacyOrderClient",
+                branchName,
+                MethodName: "GetFormattedOrders");
 
-            var engine = new AsyncConversionEngine(cache, solution);
-            var conversionResult = await engine.GenerateAsyncVersion(
-                serviceType!,
-                methodName: null,
-                CancellationToken.None,
-                treeResult);
+            var runContext = new RunContext(Guid.NewGuid());
+            RunContextAccessor.RunContext = runContext;
 
-            Assert.That(conversionResult, Is.Not.Null);
-            Assert.That(conversionResult!.ConvertedMethods, Is.Not.Empty);
+            try
+            {
+                await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
+            }
+            finally
+            {
+                RunContextAccessor.Clear();
+            }
 
-            var asyncMethod = conversionResult.ConvertedMethods
-                .Single(method => method.AsyncMethod.Identifier.Text == "GetPrimary");
-            Assert.That(asyncMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+            Assert.That(runContext.Output, Does.Contain($"Updated branch '{branchName}' with async conversions."));
+
+            var branchList = RunGit(repositoryPath, "branch");
+            Assert.That(branchList.Split('\n').Any(line => line.Trim().EndsWith(branchName)), Is.True,
+                "The async conversion should create a new branch containing the changes.");
+
+            var clientFile = Path.Combine(repositoryPath, SampleSourceFiles[3]);
+            var relativeClientPath = Path.GetRelativePath(repositoryPath, clientFile).Replace('\\', '/');
+            var branchContents = RunGit(repositoryPath, $"show {branchName}:{relativeClientPath}");
+            Assert.That(branchContents, Does.Contain("async System.Threading.Tasks.Task<IEnumerable<string>> GetFormattedOrders"));
+            Assert.That(branchContents, Does.Contain("await _coordinator.PrepareOrders"));
+
+            var coordinatorFile = Path.Combine(repositoryPath, SampleSourceFiles[2]);
+            var relativeCoordinatorPath = Path.GetRelativePath(repositoryPath, coordinatorFile).Replace('\\', '/');
+            var coordinatorContents = RunGit(repositoryPath, $"show {branchName}:{relativeCoordinatorPath}");
+            Assert.That(coordinatorContents, Does.Contain("await _formatter.FormatOrders"));
         }
         finally
         {
@@ -174,96 +169,68 @@ public class AsyncConversionProcessorTests
         }
     }
 
-    [Test]
-    public async Task ProcessSolution_CanAppendAsyncMethodsAlongsideOriginals()
+    private static void InitializeGitRepository(string repositoryPath)
     {
-        var setup = CreateAsyncConversionSolution();
-        using var workspace = setup.Workspace;
-        var solution = setup.Solution;
-        var tempDirectory = setup.TempDirectory;
-
-        var outputDirectory = Path.Combine(Path.GetTempPath(), $"async-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(outputDirectory);
-        var outputFile = Path.Combine(outputDirectory, "RecursiveServiceAsync.cs");
-
-        var processor = new AsyncConversionProcessor();
-        var parameters = new AsyncConversionParameters(
-            outputFile,
-            "Sample.RecursiveService",
-            ReplaceExistingMethods: false);
-
-        var runContext = new RunContext(Guid.NewGuid());
-        RunContextAccessor.RunContext = runContext;
-
-        try
-        {
-            await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
-
-            Assert.That(File.Exists(outputFile), Is.True, "Processor should create the async output file.");
-
-            var generatedCode = await File.ReadAllTextAsync(outputFile);
-            var root = CSharpSyntaxTree.ParseText(generatedCode).GetCompilationUnitRoot();
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-                .Single(node => node.Identifier.Text == "RecursiveService");
-
-            var getValuesMethods = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
-                .Where(method => method.Identifier.Text == "GetValues")
-                .ToArray();
-
-            Assert.That(getValuesMethods.Length, Is.EqualTo(2), "Both sync and async variants should be present.");
-
-            var asyncVariant = getValuesMethods.Single(method => method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
-            Assert.That(asyncVariant.ParameterList.Parameters.Any(p => p.Identifier.Text == "cancellationToken"),
-                "Async method should accept a cancellation token.");
-            Assert.That(asyncVariant.ReturnType.ToString(),
-                Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<int>>"));
-
-            var syncVariant = getValuesMethods.Single(method => !method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)));
-            Assert.That(syncVariant.ParameterList.Parameters.Count, Is.EqualTo(1),
-                "Original method signature should remain unchanged.");
-        }
-        finally
-        {
-            RunContextAccessor.Clear();
-
-            if (Directory.Exists(outputDirectory))
-            {
-                Directory.Delete(outputDirectory, recursive: true);
-            }
-
-            if (Directory.Exists(tempDirectory))
-            {
-                Directory.Delete(tempDirectory, recursive: true);
-            }
-        }
+        RunGit(repositoryPath, "init");
+        RunGit(repositoryPath, "config user.email test@example.com");
+        RunGit(repositoryPath, "config user.name RoslynRunnerTests");
+        RunGit(repositoryPath, "add .");
+        RunGit(repositoryPath, "commit -m initial");
     }
 
-    private static (AdhocWorkspace Workspace, Solution Solution, string TempDirectory) CreateAsyncConversionSolution()
+    private static string RunGit(string repositoryPath, string arguments)
     {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = arguments,
+            WorkingDirectory = repositoryPath,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start git process");
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            var error = process.StandardError.ReadToEnd();
+            throw new InvalidOperationException($"git {arguments} failed: {error}");
+        }
+
+        return process.StandardOutput.ReadToEnd();
+    }
+
+    private static async Task<(AdhocWorkspace Workspace, Solution Solution, string RepositoryPath, string TempDirectory)> CreateLegacyWebAppSolutionAsync(IEnumerable<string> relativePaths)
+    {
+        var repoRoot = GetRepositoryRoot();
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"legacy-webapp-{Guid.NewGuid():N}");
+        var repositoryPath = Path.Combine(tempDirectory, "repo");
+        Directory.CreateDirectory(repositoryPath);
+
+        var solutionPath = Path.Combine(repositoryPath, "LegacyWebApp.sln");
+        await File.WriteAllTextAsync(solutionPath, string.Empty);
+        var projectPath = Path.Combine(repositoryPath, "LegacyWebApp", "LegacyWebApp.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(projectPath)!);
+        await File.WriteAllTextAsync(projectPath, string.Empty);
+
         var workspace = new AdhocWorkspace();
-        var tempDirectory = Path.Combine(Path.GetTempPath(), $"async-solution-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDirectory);
-
-        var solutionPath = Path.Combine(tempDirectory, "Test.sln");
-        var projectPath = Path.Combine(tempDirectory, "TestProject.csproj");
-        File.WriteAllText(solutionPath, string.Empty);
-        File.WriteAllText(projectPath, string.Empty);
-
         var projectId = ProjectId.CreateNewId();
+
         var references = new[]
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location)
+            MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location),
         };
 
         var projectInfo = ProjectInfo.Create(
             projectId,
             VersionStamp.Create(),
-            "TestProject",
-            "TestProject",
+            "LegacyWebApp",
+            "LegacyWebApp",
             LanguageNames.CSharp,
             filePath: projectPath,
             metadataReferences: references);
@@ -276,94 +243,31 @@ public class AsyncConversionProcessorTests
 
         workspace.AddSolution(solutionInfo);
 
-        var documentId = DocumentId.CreateNewId(projectId);
-        var sourceText = SourceText.From(GetTestSource(), Encoding.UTF8);
-        var documentInfo = DocumentInfo.Create(
-            documentId,
-            "RecursiveService.cs",
-            filePath: Path.Combine(tempDirectory, "RecursiveService.cs"),
-            loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())));
-
-        workspace.AddDocument(documentInfo);
-
-        return (workspace, workspace.CurrentSolution, tempDirectory);
-    }
-
-    private static string GetTestSource() => @"using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace Sample;
-
-public interface IRecursiveConnection
-{
-    IEnumerable<int> Query(int id);
-    Task<IEnumerable<int>> QueryAsync(int id, CancellationToken cancellationToken = default);
-}
-
-public class RecursiveService
-{
-    private readonly IRecursiveConnection _connection;
-
-    public RecursiveService(IRecursiveConnection connection)
-    {
-        _connection = connection;
-    }
-
-    public IEnumerable<int> GetValues(int id)
-    {
-        return GetPrimary(id);
-    }
-
-    private IEnumerable<int> GetPrimary(int id)
-    {
-        var result = _connection.Query(id);
-        if (result.Any())
+        foreach (var relativePath in relativePaths)
         {
-            return result;
+            var sourcePath = Path.Combine(repoRoot, relativePath);
+            var destinationPath = Path.Combine(repositoryPath, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.Copy(sourcePath, destinationPath, overwrite: true);
+
+            var documentId = DocumentId.CreateNewId(projectId);
+            var sourceText = SourceText.From(await File.ReadAllTextAsync(destinationPath));
+            var documentInfo = DocumentInfo.Create(
+                documentId,
+                Path.GetFileName(destinationPath),
+                loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())),
+                filePath: destinationPath);
+
+            workspace.AddDocument(documentInfo);
         }
 
-        return GetSecondary(id);
+        return (workspace, workspace.CurrentSolution, repositoryPath, tempDirectory);
     }
 
-    private IEnumerable<int> GetSecondary(int id)
+    private static string GetRepositoryRoot()
     {
-        if (id <= 0)
-        {
-            return Enumerable.Empty<int>();
-        }
-
-        return GetPrimary(id - 1);
+        var assemblyDirectory = AppContext.BaseDirectory;
+        var repositoryRoot = Path.GetFullPath(Path.Combine(assemblyDirectory, "..", "..", "..", "..", ".."));
+        return repositoryRoot;
     }
-}
-
-public interface IValuesService
-{
-    IEnumerable<int> GetValues(int id);
-}
-
-public class ValuesService : IValuesService
-{
-    private readonly RecursiveService _recursiveService;
-
-    public ValuesService(RecursiveService recursiveService)
-    {
-        _recursiveService = recursiveService;
-    }
-
-    public IEnumerable<int> GetValues(int id)
-    {
-        return _recursiveService.GetValues(id);
-    }
-}
-
-public class TrivialService
-{
-    public int Echo(int value)
-    {
-        return value;
-    }
-}
-";
 }
