@@ -123,4 +123,29 @@ public static class RoslynRunnerMcpTool
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
         return JsonSerializer.Serialize(result.Value);
     }
+
+    [McpServerTool]
+    [Description("Convert synchronous call chains to async")]
+    public static async Task<string> ConvertSyncToAsync(
+        IRunQueue queue,
+        CommandRunningService commandRunningService,
+        [Description("The absolute path to the target solution")] string targetSolution,
+        [Description("The fully qualified name of the type to convert")] string typeName,
+        [Description("The output file path for the generated async file")] string outputFile,
+        [Description("Optional starting method name")] string? methodName = null,
+        int maxTime = 300,
+        CancellationToken cancellationToken = default)
+    {
+        var context = new RunCommand(
+            PrimarySolution: targetSolution,
+            PersistSolution: false,
+            ProcessorSolution: null,
+            ProcessorName: "AsyncConverter",
+            AssemblyLoadContextPath: null,
+            Context: JsonSerializer.Serialize(new AsyncConversionParameters(outputFile, typeName, methodName)));
+
+        Guid runId = await queue.Enqueue(context, cancellationToken);
+        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
+        return JsonSerializer.Serialize(result.Value);
+    }
 }

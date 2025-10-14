@@ -5,10 +5,12 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
+using RoslynRunner.Core.Extensions;
+using RoslynRunner.Utilities.InvocationTrees;
 
 namespace LegacyWebAppConverter;
 
-public record ConvertToMinimalApiContext(string OutputRoot);
+public record ConvertToMinimalApiContext(string OutputRoot, string AsyncOutputPath, string AsyncTypeName, string? AsyncMethodName = null);
 
 public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext>
 {
@@ -63,6 +65,22 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
 
                 RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(newFilePath)}");
                 await File.WriteAllTextAsync(newFilePath, syntaxRoot.ToFullString(), cancellationToken);
+            }
+        }
+
+        if (context != null)
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution, null, cancellationToken);
+            var serviceType = cache.GetSymbolByMetadataName(context.AsyncTypeName);
+            if (serviceType != null)
+            {
+                var engine = new AsyncConversionEngine(cache, solution);
+                var conversionResult = await engine.GenerateAsyncVersion(serviceType, context.AsyncMethodName, cancellationToken);
+                if (conversionResult != null)
+                {
+                    await File.WriteAllTextAsync(context.AsyncOutputPath, conversionResult.UpdatedRoot.ToFullString(), cancellationToken);
+                    RunContextAccessor.RunContext.Output.Add($"Created file: {Path.GetFullPath(context.AsyncOutputPath)}");
+                }
             }
         }
     }

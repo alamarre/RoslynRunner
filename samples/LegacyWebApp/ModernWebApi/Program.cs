@@ -6,6 +6,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSingleton<System.Data.IDbConnection>(_ => new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:"));
+builder.Services.AddTransient<ModernWebApi.Services.IRecursiveService, ModernWebApi.Services.RecursiveService>();
+builder.Services.AddTransient<ModernWebApi.Services.IValuesService, ModernWebApi.Services.ValuesService>();
 
 AutomaticEndpoints automaticEndpoints = new();
 automaticEndpoints.RegisterEndpointMappers(builder.Services);

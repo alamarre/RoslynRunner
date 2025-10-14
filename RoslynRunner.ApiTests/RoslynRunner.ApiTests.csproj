@@ -17,12 +17,12 @@
         <PackageReference Include="NUnit3TestAdapter" />
     </ItemGroup>
 
-    <ItemGroup>
-        <Using Include="NUnit.Framework"/>
-    </ItemGroup>
+  <ItemGroup>
+    <Using Include="NUnit.Framework"/>
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
+  </ItemGroup>
 
 </Project>

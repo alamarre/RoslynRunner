@@ -1,4 +1,8 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Threading.Tasks;
+using System.Linq;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Operations;
@@ -13,7 +17,7 @@ namespace RoslynRunner.Utilities.InvocationTrees;
 
 public static class InvocationTreeBuilder
 {
-    public static async Task<(InvocationRoot, List<InvocationMethod>)> BuildInvocationTreeAsync(
+    public static async Task<InvocationTreeResult> BuildInvocationTreeAsync(
         ISymbol startingType,
         Solution solution,
         string? methodFilter = null,
@@ -136,13 +140,14 @@ public static class InvocationTreeBuilder
                     return newMethods;
                 }, initialMethods);
 
-            return (new InvocationRoot(initialMethods.ToList()), allMethods.ToList());
+            return new InvocationTreeResult(new InvocationRoot(initialMethods.ToList()),
+                allMethods.ToImmutableArray());
         }
 
-        return (new InvocationRoot(new List<InvocationMethod>()), new List<InvocationMethod>());
+        return InvocationTreeResult.Empty;
     }
 
-    public static async Task<(InvocationRoot, List<InvocationMethod>)> BuildInvocationTreeWithCacheAsync(
+    public static async Task<InvocationTreeResult> BuildInvocationTreeWithCacheAsync(
         CachedSymbolFinder cachedSymbolFinder,
         ISymbol startingType,
         Solution solution,
@@ -156,7 +161,7 @@ public static class InvocationTreeBuilder
 
         if (methodSymbols is null || !methodSymbols.Any())
         {
-            return (new InvocationRoot(new List<InvocationMethod>()), new List<InvocationMethod>());
+            return InvocationTreeResult.Empty;
         }
 
         if (methodFilter != null)
@@ -168,7 +173,7 @@ public static class InvocationTreeBuilder
                 new Dictionary<IInvocationOperation, InvocationMethod>())).ToArray();
 
         var allMethods = await DedupingQueueRunner.ProcessResultsAsync<InvocationMethod>(
-            async (InvocationMethod method) =>
+            (InvocationMethod method) =>
             {
                 List<InvocationMethod> newMethods = new();
                 var methodSymbol = method.MethodSymbol;
@@ -176,7 +181,7 @@ public static class InvocationTreeBuilder
 
                 if (methodSymbol is null)
                 {
-                    return newMethods;
+                    return Task.FromResult<IEnumerable<InvocationMethod>>(newMethods);
                 }
                 if (cachedSymbolFinder.SymbolCache.ImplementationCache.TryGetValue(methodSymbol, out var implementations)
                  && implementations is not null
@@ -221,12 +226,13 @@ public static class InvocationTreeBuilder
 
                         method.InvokedMethods.Add(operation, invocationMethod);
                     }
-                }
+                    }
 
-                return newMethods;
-            }, initialMethods);
+                    return Task.FromResult<IEnumerable<InvocationMethod>>(newMethods);
+                }, initialMethods);
 
-        return (new InvocationRoot(initialMethods.ToList()), allMethods.ToList());
+        return new InvocationTreeResult(new InvocationRoot(initialMethods.ToList()),
+            allMethods.ToImmutableArray());
     }
 
     /// <summary>
