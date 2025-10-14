@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.IO;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace RoslynRunner.ApiTests;
@@ -14,12 +15,17 @@ public class AppContext
         PropertyNameCaseInsensitive = true
     };
     public static string? BaseDirectory = null;
+    private static string? databaseFilePath;
 
     public static string BaseUrl => HttpClient!.BaseAddress!.ToString();
     public static HttpClient HttpClient { get; set; } = null!;
     [OneTimeSetUp]
     public virtual async Task Setup()
     {
+        var tempDatabaseName = $"runhistory_{Guid.NewGuid():N}.db";
+        databaseFilePath = Path.Combine(Path.GetTempPath(), tempDatabaseName);
+        Environment.SetEnvironmentVariable("ConnectionStrings__RunDatabase", $"Data Source={databaseFilePath}");
+
         var startDirectory = AppDomain.CurrentDomain.BaseDirectory;
         for (var currentDirectory = startDirectory; currentDirectory != null; currentDirectory = Directory.GetParent(currentDirectory)?.FullName)
         {
@@ -48,6 +54,30 @@ public class AppContext
     {
         App?.Dispose();
         HttpClient?.Dispose();
+        Environment.SetEnvironmentVariable("ConnectionStrings__RunDatabase", null);
+
+        if (databaseFilePath is not null)
+        {
+            TryDelete(databaseFilePath);
+            TryDelete(databaseFilePath + "-journal");
+            TryDelete(databaseFilePath + "-shm");
+            TryDelete(databaseFilePath + "-wal");
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Ignored – best effort cleanup.
+        }
     }
 
     private static async Task RestoreLegacySampleAsync(string baseDirectory)
