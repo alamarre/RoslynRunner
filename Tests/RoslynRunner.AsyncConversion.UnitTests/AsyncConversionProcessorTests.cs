@@ -192,6 +192,9 @@ public class AsyncConversionProcessorTests
             "Sample.RecursiveService",
             ReplaceExistingMethods: false);
 
+        var runContext = new RunContext(Guid.NewGuid());
+        RunContextAccessor.RunContext = runContext;
+
         try
         {
             await processor.ProcessSolution(solution, parameters, NullLogger.Instance, CancellationToken.None);
@@ -221,6 +224,8 @@ public class AsyncConversionProcessorTests
         }
         finally
         {
+            RunContextAccessor.Clear();
+
             if (Directory.Exists(outputDirectory))
             {
                 Directory.Delete(outputDirectory, recursive: true);

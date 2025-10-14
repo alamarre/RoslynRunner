@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -29,6 +30,11 @@ public class AppContext
             }
         }
 
+        if (BaseDirectory is not null)
+        {
+            await RestoreLegacySampleAsync(BaseDirectory);
+        }
+
         App = new CustomWebAppFactory();
         HttpClient = App.CreateClient();
         HttpClient.BaseAddress = App.BaseAddress;
@@ -42,5 +48,42 @@ public class AppContext
     {
         App?.Dispose();
         HttpClient?.Dispose();
+    }
+
+    private static async Task RestoreLegacySampleAsync(string baseDirectory)
+    {
+        var solutionPath = Path.Combine(baseDirectory, "samples", "LegacyWebApp", "LegacyWebApp.sln");
+        if (!File.Exists(solutionPath))
+        {
+            return;
+        }
+
+        var startInfo = new ProcessStartInfo("dotnet", $"restore \"{solutionPath}\"")
+        {
+            WorkingDirectory = Path.GetDirectoryName(solutionPath)!,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+
+        startInfo.EnvironmentVariables["DOTNET_DISABLE_TERMINAL_LOGGER"] = "1";
+
+        using var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            throw new InvalidOperationException("Failed to start dotnet restore process.");
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        await Task.WhenAll(process.WaitForExitAsync(), stdoutTask, stderrTask);
+
+        if (process.ExitCode != 0)
+        {
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+            throw new InvalidOperationException($"dotnet restore failed: {stderr}\n{stdout}");
+        }
     }
 }
