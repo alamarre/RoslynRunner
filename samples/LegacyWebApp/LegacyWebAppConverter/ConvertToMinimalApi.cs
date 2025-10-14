@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Core;
+using RoslynRunner.Core.Extensions;
 using RoslynRunner.Utilities.InvocationTrees;
 
 namespace LegacyWebAppConverter;
@@ -69,7 +70,7 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
 
         if (context != null)
         {
-            var cache = await CachedSymbolFinder.FromCache(solution);
+            var cache = await CachedSymbolFinder.FromCache(solution, null, cancellationToken);
             var serviceType = cache.GetSymbolByMetadataName(context.AsyncTypeName);
             if (serviceType != null)
             {
@@ -82,7 +83,6 @@ public class ConvertToMinimalApi : ISolutionProcessor<ConvertToMinimalApiContext
                 }
             }
         }
-    }
     }
 
     private SyntaxNode ReplaceNamespace(SyntaxNode syntaxRoot)
