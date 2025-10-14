@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Ardalis.Result;
 using IdentityModel.OidcClient;
+using Microsoft.Extensions.DependencyInjection;
 using RoslynRunner.Abstractions;
+using RoslynRunner.Data;
 using Result = Ardalis.Result.Result;
 
 namespace RoslynRunner;
@@ -11,7 +13,8 @@ public class CommandRunningService(
     IRunQueue runQueue,
     RunCommandProcessor processor,
     ILogger<CommandRunningService> logger,
-    ICancellationTokenManager cancellationTokenManager) : BackgroundService
+    ICancellationTokenManager cancellationTokenManager,
+    IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
     private ConcurrentDictionary<Guid, TaskCompletionSource<RunContext>> _taskRuns = new();
     private ConcurrentQueue<RunParameters> _runParameters = new();
@@ -22,9 +25,12 @@ public class CommandRunningService(
             using var activity = new Activity("Queue Processing");
             Guid? runId = null;
             RunContext? runContext = null;
+            RunParameters? currentRunParameters = null;
+            var succeeded = false;
             try
             {
                 var runParameters = await runQueue.Dequeue(stoppingToken);
+                currentRunParameters = runParameters;
                 RunContextAccessor.RunContext = new(runParameters.RunId);
                 runContext = RunContextAccessor.RunContext;
                 _runParameters.Enqueue(runParameters);
@@ -39,6 +45,7 @@ public class CommandRunningService(
                     cancellationTokenManager.GetCancellationToken());
                 runId = runParameters.RunId;
                 await task;
+                succeeded = true;
                 tcs.TrySetResult(runContext);
             }
             catch (Exception e)
@@ -55,6 +62,12 @@ public class CommandRunningService(
                 if (runContext is not null)
                 {
                     runContext.IsRunning = false;
+                    if (currentRunParameters is not null)
+                    {
+                        using var scope = serviceScopeFactory.CreateScope();
+                        var runHistoryService = scope.ServiceProvider.GetRequiredService<IRunHistoryService>();
+                        await runHistoryService.RecordRunAsync(currentRunParameters, runContext, succeeded, CancellationToken.None);
+                    }
                 }
                 RunContextAccessor.Clear();
                 if (!activity.IsStopped)

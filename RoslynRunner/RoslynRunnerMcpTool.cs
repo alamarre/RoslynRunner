@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using RoslynRunner.Data;
 using RoslynRunner.SolutionProcessors;
 using RoslynRunner.Utilities.InvocationTrees;
 
@@ -15,10 +16,12 @@ public static class RoslynRunnerMcpTool
     public static async Task<string> LoadSolution(
         IRunQueue queue,
         CommandRunningService commandRunningService,
+        IRunHistoryService runHistoryService,
         [Description("The absolute path of the project or solution to load")] string solutionPath,
         [Description("Whether to preload symbols in the cache")] bool cacheSymbols,
         [Description("The name of the project to cache symbols from")] string? projectName,
         [Description("The maximumum time to run in seconds")] int maxTime = 3600,
+        [Description("Optional name to save this run for future reuse")] string? saveRunAs = null,
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
@@ -28,6 +31,10 @@ public static class RoslynRunnerMcpTool
             ProcessorName: "SolutionLoader",
             AssemblyLoadContextPath: null,
             Context: null);
+        if (!string.IsNullOrWhiteSpace(saveRunAs))
+        {
+            await runHistoryService.SaveRunAsync(saveRunAs, context, cancellationToken);
+        }
         Guid runId = await queue.Enqueue(context, cancellationToken);
 
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
@@ -39,10 +46,12 @@ public static class RoslynRunnerMcpTool
     public static async Task<string> RunProcessor(
         IRunQueue queue,
         CommandRunningService commandRunningService,
+        IRunHistoryService runHistoryService,
         [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
         [Description("The absolute path to the csproj for the solution processor")] string processorProjectPath,
         [Description("The fully qualified domain name of the processor class")] string processorFqdn,
         [Description("The maximumum time for the processor to run in seconds")] int maxTime = 3600,
+        [Description("Optional name to save this run for future reuse")] string? saveRunAs = null,
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
@@ -53,6 +62,10 @@ public static class RoslynRunnerMcpTool
             ProcessorProjectName: null,
             AssemblyLoadContextPath: null,
             Context: null);
+        if (!string.IsNullOrWhiteSpace(saveRunAs))
+        {
+            await runHistoryService.SaveRunAsync(saveRunAs, context, cancellationToken);
+        }
         Guid runId = await queue.Enqueue(context, cancellationToken);
 
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
@@ -64,12 +77,14 @@ public static class RoslynRunnerMcpTool
     public static async Task<string> CreateDiagram(
         IRunQueue queue,
         CommandRunningService commandRunningService,
+        IRunHistoryService runHistoryService,
         [Description("The absolute path solution file to analyze")] string targetSolutionPath,
         [Description("The fully qualified name of the type to analyze")] string typeName,
         [Description("Folder to save the diagram in")] string outputPath,
         [Description("The name, minus the extension, of the diagram file")] string diagramName,
         [Description("The maximum time for the processor to run in seconds")] int maxTime = 300,
         [Description("The name of the method to start with, if null all methods of the type will be analyzed")] string? methodName = null,
+        [Description("Optional name to save this run for future reuse")] string? saveRunAs = null,
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand(
@@ -92,6 +107,10 @@ public static class RoslynRunnerMcpTool
                 ],
                 UseCache: true,
                 MethodFilter: methodName)));
+        if (!string.IsNullOrWhiteSpace(saveRunAs))
+        {
+            await runHistoryService.SaveRunAsync(saveRunAs, context, cancellationToken);
+        }
         Guid runId = await queue.Enqueue(context, cancellationToken);
 
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
@@ -103,10 +122,12 @@ public static class RoslynRunnerMcpTool
     public static async Task<string> RunAnalyzer(
         IRunQueue queue,
         CommandRunningService commandRunningService,
+        IRunHistoryService runHistoryService,
         [Description("The absolute path of the project to analyze, or the solution which contains it")] string targetProjectPath,
         [Description("The name of the target project")] string targetProjectName,
         [Description("The absolute path to the analyzer project")] string analyzerProjectPath,
         [Description("The fully qualified name of the analyzer")] string analyzerName,
+        [Description("Optional name to save this run for future reuse")] string? saveRunAs = null,
         CancellationToken cancellationToken = default)
     {
         var context = new RunCommand<AnalyzerContext>(
@@ -118,6 +139,10 @@ public static class RoslynRunnerMcpTool
             targetProjectName,
             new List<string> { analyzerName })
         );
+        if (!string.IsNullOrWhiteSpace(saveRunAs))
+        {
+            await runHistoryService.SaveRunAsync(saveRunAs, context.ToRunCommand(), cancellationToken);
+        }
         Guid runId = await queue.Enqueue(context.ToRunCommand(), cancellationToken);
 
         var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(120), cancellationToken);
@@ -125,6 +150,26 @@ public static class RoslynRunnerMcpTool
     }
 
     [McpServerTool]
+    [Description("Run a saved command by name")]
+    public static async Task<string> RunSavedCommand(
+        IRunQueue queue,
+        CommandRunningService commandRunningService,
+        IRunHistoryService runHistoryService,
+        [Description("The name of the saved run to execute")] string savedRunName,
+        [Description("The maximum time for the processor to run in seconds")] int maxTime = 3600,
+        CancellationToken cancellationToken = default)
+    {
+        var runCommand = await runHistoryService.GetSavedRunCommandAsync(savedRunName, cancellationToken);
+        if (runCommand is null)
+        {
+            throw new InvalidOperationException($"Saved run '{savedRunName}' was not found.");
+        }
+
+        Guid runId = await queue.Enqueue(runCommand, cancellationToken);
+        var result = await commandRunningService.WaitForTaskAsync(runId, TimeSpan.FromSeconds(maxTime), cancellationToken);
+        return JsonSerializer.Serialize(result.Value);
+    }
+
     [Description("Convert synchronous call chains to async")]
     public static async Task<string> ConvertSyncToAsync(
         IRunQueue queue,

@@ -2,7 +2,9 @@
 @rendermode InteractiveServer
 @inject IRunQueue runQueue
 @inject ICancellationTokenManager cancellationTokenManager
+@inject IRunHistoryService runHistoryService
 @using System.Text.Json
+@using RoslynRunner.Data
 @inject IJSRuntime runtime
 
 <MudContainer MaxWidth="MaxWidth.Large">
@@ -81,10 +83,109 @@
                 <MudButton OnClick="LoadFromJson" Variant="Variant.Filled">Load</MudButton>
             </MudItem>
         </MudTabPanel>
+        <MudTabPanel Text="History">
+            <MudTabs Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+                <MudTabPanel Text="Recent Runs">
+                    <MudItem Class="mb-4">
+                        <MudButton Variant="Variant.Outlined" OnClick="LoadHistoryAsync">Refresh</MudButton>
+                    </MudItem>
+                    @if (recentRuns.Count == 0)
+                    {
+                        <MudText Typo="Typo.body1">No runs recorded yet.</MudText>
+                    }
+                    else
+                    {
+                        <MudExpansionPanels>
+                            @foreach (var run in recentRuns)
+                            {
+                                <MudExpansionPanel Text="@($"{(run.Succeeded ? "Success" : "Failed")} - {run.CreatedAt.ToLocalTime():g}")">
+                                    <MudStack Row="true" Spacing="1" Class="mb-2">
+                                        <MudButton OnClick="@(() => RunExistingCommand(run.RunCommand))" Color="Color.Primary" Variant="Variant.Text">Run Again</MudButton>
+                                        <MudButton OnClick="@(() => LoadFromRunCommand(run.RunCommand))" Variant="Variant.Text">Load Into Form</MudButton>
+                                    </MudStack>
+                                    <MudText Typo="Typo.subtitle2">Run Id: @run.RunId</MudText>
+                                    <MudText Typo="Typo.subtitle2" Class="mt-2">Command</MudText>
+                                    <MudPaper Class="pa-2 mb-2" Elevation="1">
+                                        <pre>@JsonSerializer.Serialize(run.RunCommand, prettyJsonOptions)</pre>
+                                    </MudPaper>
+                                    <MudText Typo="Typo.subtitle2">Output</MudText>
+                                    @if (run.Output.Count == 0)
+                                    {
+                                        <MudText Typo="Typo.body2">(no output)</MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudList T="string" Dense="true">
+                                            @foreach (var line in run.Output)
+                                            {
+                                                <MudListItem T="string">@line</MudListItem>
+                                            }
+                                        </MudList>
+                                    }
+                                    <MudText Typo="Typo.subtitle2" Class="mt-2">Errors</MudText>
+                                    @if (run.Errors.Count == 0)
+                                    {
+                                        <MudText Typo="Typo.body2">(no errors)</MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudList T="string" Dense="true">
+                                            @foreach (var error in run.Errors)
+                                            {
+                                                <MudListItem T="string">@error</MudListItem>
+                                            }
+                                        </MudList>
+                                    }
+                                </MudExpansionPanel>
+                            }
+                        </MudExpansionPanels>
+                    }
+                </MudTabPanel>
+                <MudTabPanel Text="Saved Runs">
+                    <MudItem Class="mb-4">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudTextField @bind-Value="newSavedRunName" Label="Saved Run Name" Variant="Variant.Outlined" />
+                            <MudButton OnClick="CreateSavedRunFromCurrent" Color="Color.Primary">Save Current Run</MudButton>
+                            <MudButton Variant="Variant.Outlined" OnClick="LoadHistoryAsync">Refresh</MudButton>
+                        </MudStack>
+                    </MudItem>
+                    @if (!string.IsNullOrEmpty(saveRunError))
+                    {
+                        <MudAlert Severity="Severity.Error">@saveRunError</MudAlert>
+                    }
+                    @if (savedRuns.Count == 0)
+                    {
+                        <MudText Typo="Typo.body1">No saved runs yet.</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var saved in savedRuns)
+                        {
+                            <MudPaper Class="pa-4 mb-3" Elevation="1">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudStack>
+                                        <MudText Typo="Typo.subtitle1">@saved.Name</MudText>
+                                        <MudText Typo="Typo.caption">Saved @saved.CreatedAt.ToLocalTime():g</MudText>
+                                    </MudStack>
+                                    <MudStack Row="true" Spacing="1">
+                                        <MudButton OnClick="@(() => RunSavedRun(saved))" Color="Color.Primary" Variant="Variant.Filled">Run</MudButton>
+                                        <MudButton OnClick="@(() => LoadSavedRun(saved))" Variant="Variant.Text">Load</MudButton>
+                                        <MudButton OnClick="@(() => DeleteSavedRun(saved.Name))" Color="Color.Error" Variant="Variant.Outlined">Delete</MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    }
+                </MudTabPanel>
+            </MudTabs>
+        </MudTabPanel>
     </MudTabs>
 </MudContainer>
 
 @code {
+    private static readonly JsonSerializerOptions prettyJsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions caseInsensitiveOptions = new() { PropertyNameCaseInsensitive = true };
+
     private string commandType = "Analyzer";
     private string primarySolution = string.Empty;
     public bool persistSolution = false;
@@ -99,6 +200,24 @@
     private string? contextError = null;
     private string currentRunCommandJson = string.Empty;
     private string loadJsonText = string.Empty;
+    private List<RunHistoryItem> recentRuns = new();
+    private List<SavedRunItem> savedRuns = new();
+    private string? newSavedRunName;
+    private string? saveRunError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        var recent = await runHistoryService.GetRecentRunsAsync();
+        recentRuns = recent.ToList();
+        var saved = await runHistoryService.GetSavedRunsAsync();
+        savedRuns = saved.ToList();
+        StateHasChanged();
+    }
 
     private async Task CopyToClipboard()
     {
@@ -109,7 +228,7 @@
     {
         var runCommand = GetRunCommand();
 
-        currentRunCommandJson = JsonSerializer.Serialize(runCommand, new JsonSerializerOptions { WriteIndented = true });
+        currentRunCommandJson = JsonSerializer.Serialize(runCommand, prettyJsonOptions);
         StateHasChanged();
     }
 
@@ -123,30 +242,30 @@
             {
                 AnalyzerProject = analyzerProject,
                 TargetProject = targetProject,
-                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()) ?? new string[] { }
+                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()).Where(a => !string.IsNullOrWhiteSpace(a)) ?? Array.Empty<string>()
             };
             var serializedContext = JsonSerializer.Serialize(analyzerContext);
 
             runCommand = new RunCommand(
-            primarySolution,
-            persistSolution,
-            null,
-            "AnalyzerRunner",
-            null,
-            assemblyLoadContextPath,
-            Context: serializedContext
+                primarySolution,
+                persistSolution,
+                null,
+                "AnalyzerRunner",
+                null,
+                assemblyLoadContextPath,
+                Context: serializedContext
             );
         }
         else
         {
             runCommand = new RunCommand(
-            primarySolution,
-            persistSolution,
-            processorSolution,
-            processorName,
-            processorProjectName,
-            assemblyLoadContextPath,
-            Context: contextText
+                primarySolution,
+                persistSolution,
+                processorSolution,
+                processorName,
+                processorProjectName,
+                assemblyLoadContextPath,
+                Context: contextText
             );
         }
 
@@ -157,59 +276,118 @@
     {
         try
         {
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            };
-            var loadedCommand = JsonSerializer.Deserialize<RunCommand>(loadJsonText, options);
+            var loadedCommand = JsonSerializer.Deserialize<RunCommand>(loadJsonText, caseInsensitiveOptions);
 
             if (loadedCommand is not null)
             {
-                primarySolution = loadedCommand.PrimarySolution;
-                persistSolution = loadedCommand.PersistSolution;
-                processorSolution = loadedCommand.ProcessorSolution;
-                processorName = loadedCommand.ProcessorName;
-                processorProjectName = loadedCommand.ProcessorProjectName;
-                assemblyLoadContextPath = loadedCommand.AssemblyLoadContextPath;
-                contextText = loadedCommand.Context;
-
-                // Update specific fields based on command type
-                if (processorName == "AnalyzerRunner")
-                {
-                    commandType = "Analyzer";
-                    var analyzerContext = JsonSerializer.Deserialize<Dictionary<string, object>>(loadedCommand.Context ?? "{}");
-                    analyzerProject = analyzerContext?["AnalyzerProject"]?.ToString() ?? string.Empty;
-                    targetProject = analyzerContext?["TargetProject"]?.ToString() ?? string.Empty;
-
-                    var names = analyzerContext?["AnalyzerNames"] as JsonElement?;
-                    // convert to array
-                    var fullNames = names?.EnumerateArray().ToArray();
-                    if (fullNames != null)
-                    {
-                        analyzerNames = string.Join(",", fullNames);
-                    }
-                }
-                else
-                {
-                    commandType = "Custom Processor";
-                }
-
-                contextError = null;
-                UpdateCommandText();
+                ApplyRunCommand(loadedCommand);
             }
         }
         catch (JsonException)
         {
             contextError = "Invalid JSON input for loading.";
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyRunCommand(RunCommand loadedCommand)
+    {
+        primarySolution = loadedCommand.PrimarySolution;
+        persistSolution = loadedCommand.PersistSolution;
+        processorSolution = loadedCommand.ProcessorSolution;
+        processorName = loadedCommand.ProcessorName;
+        processorProjectName = loadedCommand.ProcessorProjectName;
+        assemblyLoadContextPath = loadedCommand.AssemblyLoadContextPath;
+        contextText = loadedCommand.Context;
+
+        if (loadedCommand.ProcessorName == "AnalyzerRunner")
+        {
+            commandType = "Analyzer";
+            try
+            {
+                var analyzerContext = JsonSerializer.Deserialize<AnalyzerContextModel>(loadedCommand.Context ?? "{}", caseInsensitiveOptions);
+                analyzerProject = analyzerContext?.AnalyzerProject ?? string.Empty;
+                targetProject = analyzerContext?.TargetProject ?? string.Empty;
+                analyzerNames = analyzerContext?.AnalyzerNames is not null
+                    ? string.Join(",", analyzerContext.AnalyzerNames)
+                    : string.Empty;
+            }
+            catch
+            {
+                analyzerProject = string.Empty;
+                targetProject = string.Empty;
+                analyzerNames = string.Empty;
+            }
+        }
+        else
+        {
+            commandType = "Custom Processor";
         }
 
-        StateHasChanged();
+        contextError = null;
+        UpdateCommandText();
     }
 
     private async Task SubmitForm()
     {
         var runCommand = GetRunCommand();
         await runQueue.Enqueue(runCommand);
+    }
+
+    private async Task RunExistingCommand(RunCommand runCommand)
+    {
+        await runQueue.Enqueue(runCommand);
+    }
+
+    private async Task CreateSavedRunFromCurrent()
+    {
+        saveRunError = null;
+
+        if (string.IsNullOrWhiteSpace(newSavedRunName))
+        {
+            saveRunError = "Saved run name is required.";
+            return;
+        }
+
+        try
+        {
+            var runCommand = GetRunCommand();
+            await runHistoryService.SaveRunAsync(newSavedRunName, runCommand);
+            newSavedRunName = string.Empty;
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            saveRunError = $"Failed to save run: {ex.Message}";
+        }
+    }
+
+    private async Task RunSavedRun(SavedRunItem savedRun)
+    {
+        await runQueue.Enqueue(savedRun.RunCommand);
+    }
+
+    private void LoadSavedRun(SavedRunItem savedRun)
+    {
+        ApplyRunCommand(savedRun.RunCommand);
+    }
+
+    private async Task DeleteSavedRun(string name)
+    {
+        await runHistoryService.DeleteSavedRunAsync(name);
+        await LoadHistoryAsync();
+    }
+
+    private void LoadFromRunCommand(RunCommand command)
+    {
+        ApplyRunCommand(command);
+    }
+
+    private class AnalyzerContextModel
+    {
+        public string? AnalyzerProject { get; set; }
+        public string? TargetProject { get; set; }
+        public IEnumerable<string>? AnalyzerNames { get; set; }
     }
 
     public class Labels

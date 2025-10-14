@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Build.Locator;
 using ModelContextProtocol.Server;
 using MudBlazor.Services;
@@ -9,6 +10,7 @@ using RoslynRunner.SolutionProcessors;
 using RoslynRunner.UI;
 using System.Text.Json;
 using RoslynRunner.Runs;
+using RoslynRunner.Data;
 
 try
 {
@@ -35,11 +37,20 @@ builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManage
 
 builder.Services.AddSingleton<CommandRunningService>();
 builder.Services.AddHostedService<CommandRunningService>(ctx => ctx.GetRequiredService<CommandRunningService>());
+builder.Services.AddDbContext<RunHistoryDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("RunDatabase") ?? "Data Source=runhistory.db"));
+builder.Services.AddScoped<IRunHistoryService, RunHistoryService>();
 builder.AddServiceDefaults();
 builder.Services.AddMcpServer()
     .WithToolsFromAssembly();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<RunHistoryDbContext>();
+    await dbContext.Database.EnsureCreatedAsync();
+}
 app.UseRouting();
 
 app.UseStaticFiles();
