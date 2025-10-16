@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Ardalis.Result;
-using IdentityModel.OidcClient;
 using Microsoft.Extensions.DependencyInjection;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Data;

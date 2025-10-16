@@ -3,3 +3,4 @@ bin/
 .vscode/
 .vs/
 .idea/
+*.user

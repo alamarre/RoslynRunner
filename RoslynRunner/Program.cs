@@ -10,6 +10,8 @@ using RoslynRunner.Core;
 using RoslynRunner.SolutionProcessors;
 using RoslynRunner.UI;
 using System.Text.Json;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using RoslynRunner.Runs;
 using RoslynRunner.Data;
 
