@@ -44,9 +44,9 @@ public class CachedSymbolFinder
         return SymbolCache.MethodCache.TryGetValue(GetFromOwnCompilation(methodSymbol), out var methodData) ? methodData : null;
     }
 
-    public List<IMethodSymbol>? GetImplementations(IMethodSymbol methodSymbol)
+    public HashSet<IMethodSymbol>? GetImplementations(IMethodSymbol methodSymbol)
     {
-        return SymbolCache.ImplementationCache.TryGetValue(GetFromOwnCompilation(methodSymbol), out var implementations) ? implementations : null;
+        return SymbolCache.ImplementationCache.GetValueOrDefault(methodSymbol.OriginalDefinition.GetMethodId());
     }
 
 

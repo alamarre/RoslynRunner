@@ -18,7 +18,7 @@ public record MethodData(
 public record SymbolCache(
     Dictionary<IMethodSymbol, MethodData> MethodCache,
     Dictionary<string, IMethodSymbol> MethodNameCache,
-    Dictionary<IMethodSymbol, List<IMethodSymbol>> ImplementationCache,
+    Dictionary<string, HashSet<IMethodSymbol>> ImplementationCache,
     Dictionary<string, List<ISymbol>> TypeImplementations,
     Dictionary<string, INamedTypeSymbol> MetadataNameCache,
     Dictionary<IMethodSymbol, List<IMethodSymbol>> CallerCache);
@@ -31,7 +31,7 @@ public static class ProjectExtensions
         CancellationToken cancellationToken = default)
     {
         Dictionary<IMethodSymbol, MethodData> methodCache = new(SymbolEqualityComparer.Default);
-        Dictionary<IMethodSymbol, List<IMethodSymbol>> implementationCache = new(SymbolEqualityComparer.Default);
+        Dictionary<string, HashSet<IMethodSymbol>> implementationCache = new();
         Dictionary<string, List<ISymbol>> typeImplementations = new();
         Dictionary<IMethodSymbol, List<IMethodSymbol>> callerCache = new();
         Dictionary<string, INamedTypeSymbol> metadataNameCache = new();
@@ -154,11 +154,11 @@ public static class ProjectExtensions
                     if (methodSymbol.OverriddenMethod is not null)
                     {
                         IMethodSymbol baseMethod = methodSymbol.OverriddenMethod;
-                        List<IMethodSymbol>? implementations;
-                        if (!implementationCache.TryGetValue(baseMethod, out implementations))
+                        HashSet<IMethodSymbol>? implementations;
+                        if (!implementationCache.TryGetValue(baseMethod.OriginalDefinition.GetMethodId(), out implementations))
                         {
-                            implementations = new List<IMethodSymbol>();
-                            implementationCache.Add(baseMethod, implementations);
+                            implementations = new(SymbolEqualityComparer.Default);
+                            implementationCache.Add(baseMethod.OriginalDefinition.GetMethodId(), implementations);
                         }
                         implementations.Add(methodSymbol);
                     }
@@ -172,11 +172,11 @@ public static class ProjectExtensions
                             IMethodSymbol? implementation = containingType.FindImplementationForInterfaceMember(interfaceMember) as IMethodSymbol;
                             if (implementation is not null && SymbolEqualityComparer.Default.Equals(implementation, methodSymbol))
                             {
-                                List<IMethodSymbol>? implementations;
-                                if (!implementationCache.TryGetValue(interfaceMember, out implementations))
+                                HashSet<IMethodSymbol>? implementations;
+                                if (!implementationCache.TryGetValue(interfaceMember.OriginalDefinition.GetMethodId(), out implementations))
                                 {
-                                    implementations = new List<IMethodSymbol>();
-                                    implementationCache.Add(interfaceMember, implementations);
+                                    implementations = new(SymbolEqualityComparer.Default);
+                                    implementationCache.Add(interfaceMember.OriginalDefinition.GetMethodId(), implementations);
                                 }
                                 implementations.Add(methodSymbol);
                             }

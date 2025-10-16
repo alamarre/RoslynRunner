@@ -183,8 +183,8 @@ public static class InvocationTreeBuilder
                 {
                     return Task.FromResult<IEnumerable<InvocationMethod>>(newMethods);
                 }
-                if (cachedSymbolFinder.SymbolCache.ImplementationCache.TryGetValue(methodSymbol, out var implementations)
-                 && implementations is not null
+                var implementations = cachedSymbolFinder.GetImplementations(methodSymbol);
+                if (implementations is not null
                  && (maxLimit is null || implementations.Count() < maxLimit))
                 {
                     foreach (var implementationSymbol in implementations)

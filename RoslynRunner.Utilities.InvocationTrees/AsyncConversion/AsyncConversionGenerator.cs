@@ -8,6 +8,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Operations;
+using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
 using RoslynRunner.Core.QueueProcessing;
 
@@ -138,6 +139,11 @@ public sealed class AsyncConversionGenerator
             foreach (var reference in method.DeclaringSyntaxReferences)
             {
                 var document = _solution.GetDocument(reference.SyntaxTree);
+                if (document is null)
+                {
+                    document = _solution.Projects.SelectMany( d => d.Documents)
+                        .FirstOrDefault(d => d.FilePath == reference.SyntaxTree.FilePath);
+                }
                 if (document is not null && documentIds.Add(document.Id))
                 {
                     documents.Add(document);
@@ -281,8 +287,8 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
         }
 
         var symbol = _model.GetDeclaredSymbol(node);
-        if (symbol is null || !_methods.Contains(symbol))
-        {
+        if (symbol is null || _methods.All(m => m.OriginalDefinition.GetMethodId() != symbol.OriginalDefinition.GetMethodId()))
+        { 
             return updated;
         }
 
