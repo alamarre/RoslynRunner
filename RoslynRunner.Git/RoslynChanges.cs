@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Simplification;
@@ -232,16 +233,20 @@ public sealed class RoslynChanges
         return output;
     }
 
+    // based on https://github.com/dotnet/roslyn/blob/aff251d4cf72d8f84fa16876ae94c30d975b4aaa/src/Workspaces/Core/Portable/CodeActions/CodeAction.cs#L521
     private static async Task<Document> CleanupDocumentAsync(Document document, CancellationToken cancellationToken)
     {
-        document = await AddMissingUsingsAsync(document, cancellationToken).ConfigureAwait(false);
+        document = await ImportAdder.AddImportsAsync(
+            document, Simplifier.AddImportsAnnotation, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        var options = document.Project.Solution.Workspace.Options;
+        document = await Simplifier.ReduceAsync(document, Simplifier.Annotation, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        document = await Simplifier.ReduceAsync(document, Simplifier.Annotation, options, cancellationToken).ConfigureAwait(false);
-        document = await Formatter.FormatAsync(document, Formatter.Annotation, options, cancellationToken).ConfigureAwait(false);
-        document = await Formatter.FormatAsync(document, SyntaxAnnotation.ElasticAnnotation, options, cancellationToken).ConfigureAwait(false);
+        // format any node with explicit formatter annotation
+        document = await Formatter.FormatAsync(document, Formatter.Annotation, cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        // format any elastic whitespace
+        document = await Formatter.FormatAsync(document, SyntaxAnnotation.ElasticAnnotation, cancellationToken: cancellationToken).ConfigureAwait(false);
+        
         return document;
     }
 
