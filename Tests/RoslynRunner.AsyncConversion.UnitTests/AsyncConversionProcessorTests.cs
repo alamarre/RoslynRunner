@@ -152,7 +152,7 @@ public class AsyncConversionProcessorTests
             var clientFile = Path.Combine(repositoryPath, SampleSourceFiles[3]);
             var relativeClientPath = Path.GetRelativePath(repositoryPath, clientFile).Replace('\\', '/');
             var branchContents = RunGit(repositoryPath, $"show {branchName}:{relativeClientPath}");
-            Assert.That(branchContents, Does.Contain("async System.Threading.Tasks.Task<IEnumerable<string>> GetFormattedOrders"));
+            Assert.That(branchContents, Does.Contain("async Task<IEnumerable<string>> GetFormattedOrders"));
             Assert.That(branchContents, Does.Contain("await _coordinator.PrepareOrders"));
 
             var coordinatorFile = Path.Combine(repositoryPath, SampleSourceFiles[2]);
