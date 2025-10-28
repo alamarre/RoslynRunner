@@ -45,6 +45,7 @@ builder.Services.AddDbContextFactory<RunHistoryDbContext>(options =>
 builder.Services.AddSingleton<IRunHistoryService, RunHistoryService>();
 builder.AddServiceDefaults();
 builder.Services.AddMcpServer()
+    .WithHttpTransport()
     .WithToolsFromAssembly();
 
 var app = builder.Build();
@@ -121,7 +122,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 
-app.MapMcp();
+app.MapMcp( "mcp");
 
 await app.RunAsync();
 
