@@ -55,7 +55,11 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
         }
 
         var generator = new AsyncConversionGenerator(cache, solution);
-        var conversionResult = await generator.GenerateAsyncVersion(serviceType, context.MethodName, cancellationToken);
+        var conversionResult = await generator.GenerateAsyncVersion(
+            serviceType,
+            context.MethodName,
+            cancellationToken,
+            renameTransformedMethods: context.RenameTransformedMethods);
         if (conversionResult == null)
         {
             logger.LogInformation("no methods to convert");

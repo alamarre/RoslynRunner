@@ -6,5 +6,6 @@ public record AsyncConversionParameters(
     string BranchName,
     string? MethodName = null,
     bool ReplaceExistingMethods = true,
+    bool RenameTransformedMethods = true,
     string? ChangeId = null,
     string? CommitMessage = null);

@@ -179,6 +179,7 @@ public static class RoslynRunnerMcpTool
         [Description("The fully qualified name of the type to convert")] string typeName,
         [Description("The branch name that should contain the async changes")] string branchName,
         [Description("Optional starting method name")] string? methodName = null,
+        [Description("Set to false to keep the original method names when converting to async")] bool renameTransformedMethods = true,
         [Description("Optional commit message for the generated branch")] string? commitMessage = null,
         int maxTime = 300,
         CancellationToken cancellationToken = default)
@@ -194,6 +195,7 @@ public static class RoslynRunnerMcpTool
                 typeName,
                 branchName,
                 methodName,
+                RenameTransformedMethods: renameTransformedMethods,
                 ChangeId: null,
                 CommitMessage: commitMessage)));
 
