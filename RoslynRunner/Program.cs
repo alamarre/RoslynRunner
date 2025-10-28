@@ -40,9 +40,9 @@ builder.Services.AddSingleton<ICancellationTokenManager, CancellationTokenManage
 
 builder.Services.AddSingleton<CommandRunningService>();
 builder.Services.AddHostedService<CommandRunningService>(ctx => ctx.GetRequiredService<CommandRunningService>());
-builder.Services.AddDbContext<RunHistoryDbContext>(options =>
+builder.Services.AddDbContextFactory<RunHistoryDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("RunDatabase") ?? "Data Source=runhistory.db"));
-builder.Services.AddScoped<IRunHistoryService, RunHistoryService>();
+builder.Services.AddSingleton<IRunHistoryService, RunHistoryService>();
 builder.AddServiceDefaults();
 builder.Services.AddMcpServer()
     .WithToolsFromAssembly();
@@ -51,10 +51,11 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<RunHistoryDbContext>();
+    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<RunHistoryDbContext>>();
 
     try
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         await dbContext.Database.EnsureCreatedAsync();
     }
     catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))

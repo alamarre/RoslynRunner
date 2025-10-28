@@ -14,8 +14,8 @@ public interface IRunHistoryService
     Task<RunCommand?> GetSavedRunCommandAsync(string name, CancellationToken cancellationToken = default);
 }
 
-public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistoryService> logger) : IRunHistoryService
-{
+public class RunHistoryService(IDbContextFactory<RunHistoryDbContext> dbContextFactory, ILogger<RunHistoryService> logger) : IRunHistoryService
+    {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -36,6 +36,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
                 ErrorsJson = JsonSerializer.Serialize(runContext.Errors ?? new List<string>(), SerializerOptions)
             };
 
+            await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
             await dbContext.RunRecords.AddAsync(entity, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -58,6 +59,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
 
     public async Task<IReadOnlyList<RunHistoryItem>> GetRecentRunsAsync(CancellationToken cancellationToken = default)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var records = await dbContext.RunRecords
             .AsNoTracking()
             .OrderByDescending(r => r.CreatedAt)
@@ -92,6 +94,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
 
         var lowerName = normalizedName.ToLowerInvariant();
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var existing = await dbContext.SavedRuns
             .FirstOrDefaultAsync(r => r.Name.ToLower() == lowerName, cancellationToken);
 
@@ -117,6 +120,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
 
     public async Task<IReadOnlyList<SavedRunItem>> GetSavedRunsAsync(CancellationToken cancellationToken = default)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var saved = await dbContext.SavedRuns
             .AsNoTracking()
             .OrderBy(r => r.Name)
@@ -139,6 +143,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
     {
         var lowerName = name.ToLowerInvariant();
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await dbContext.SavedRuns
             .FirstOrDefaultAsync(r => r.Name.ToLower() == lowerName, cancellationToken);
 
@@ -155,6 +160,7 @@ public class RunHistoryService(RunHistoryDbContext dbContext, ILogger<RunHistory
     {
         var lowerName = name.ToLowerInvariant();
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await dbContext.SavedRuns
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Name.ToLower() == lowerName, cancellationToken);
