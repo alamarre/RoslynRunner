@@ -121,6 +121,73 @@ public class AsyncConversionProcessorTests
     }
 
     [Test]
+    public async Task GenerateAsyncVersion_DoesNotAddAsyncModifierToInterfaceMethods()
+    {
+        const string source = @"namespace TestNamespace;
+
+public interface IFoo
+{
+    void Bar();
+}
+
+public class Foo : IFoo
+{
+    private readonly Dependency _dependency = new();
+
+    public void Bar()
+    {
+        _dependency.DoWork();
+    }
+}
+
+public class Dependency
+{
+    public void DoWork()
+    {
+    }
+
+    public System.Threading.Tasks.Task DoWorkAsync(System.Threading.CancellationToken cancellationToken = default)
+        => System.Threading.Tasks.Task.CompletedTask;
+}";
+
+        var setup = await CreateSolutionFromSourceAsync(source);
+        using var workspace = setup.Workspace;
+        var solution = setup.Solution;
+
+        try
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            var fooType = cache.GetSymbolByMetadataName("TestNamespace.Foo") as INamedTypeSymbol;
+            Assert.That(fooType, Is.Not.Null);
+
+            var generator = new AsyncConversionGenerator(cache, solution);
+            var result = await generator.GenerateAsyncVersion(fooType!, "Bar", CancellationToken.None);
+
+            Assert.That(result, Is.Not.Null);
+
+            var document = result!.Documents.Single();
+            var interfaceDeclaration = document.UpdatedRoot.DescendantNodes().OfType<InterfaceDeclarationSyntax>().Single();
+            var interfaceMethod = interfaceDeclaration.Members.OfType<MethodDeclarationSyntax>().Single();
+
+            Assert.That(interfaceMethod.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)), Is.False);
+
+            var classDeclaration = document.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Single(cls => cls.Identifier.Text == "Foo");
+            var classMethod = classDeclaration.Members.OfType<MethodDeclarationSyntax>()
+                .Single(method => method.Identifier.Text == "BarAsync");
+
+            Assert.That(classMethod.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+        }
+        finally
+        {
+            if (Directory.Exists(setup.TempDirectory))
+            {
+                Directory.Delete(setup.TempDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
     public async Task GenerateAsyncVersion_ReturnsNullWhenNoEligibleMethods()
     {
         var setup = await CreateLegacyWebAppSolutionAsync(SampleSourceFiles);
@@ -263,6 +330,9 @@ public class AsyncConversionProcessorTests
             MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location),
+            CreateReferenceFromTrustedPlatformAssemblies("System.Runtime.dll"),
+            CreateReferenceFromTrustedPlatformAssemblies("Microsoft.AspNetCore.Mvc.Core.dll"),
+            CreateReferenceFromTrustedPlatformAssemblies("Microsoft.AspNetCore.Mvc.Abstractions.dll"),
         };
 
         var projectInfo = ProjectInfo.Create(
@@ -272,7 +342,8 @@ public class AsyncConversionProcessorTests
             "LegacyWebApp",
             LanguageNames.CSharp,
             filePath: projectPath,
-            metadataReferences: references);
+            metadataReferences: references,
+            compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var solutionInfo = SolutionInfo.Create(
             SolutionId.CreateNewId(),
@@ -301,6 +372,82 @@ public class AsyncConversionProcessorTests
         }
 
         return (workspace, workspace.CurrentSolution, repositoryPath, tempDirectory);
+    }
+
+    private static Task<(AdhocWorkspace Workspace, Solution Solution, string TempDirectory)> CreateSolutionFromSourceAsync(string source)
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), $"async-conversion-{Guid.NewGuid():N}");
+        var projectDirectory = Path.Combine(tempDirectory, "TestProject");
+        Directory.CreateDirectory(projectDirectory);
+
+        var solutionPath = Path.Combine(tempDirectory, "TestProject.sln");
+        File.WriteAllText(solutionPath, string.Empty);
+        var projectPath = Path.Combine(projectDirectory, "TestProject.csproj");
+        File.WriteAllText(projectPath, string.Empty);
+
+        var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(List<>).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location),
+            CreateReferenceFromTrustedPlatformAssemblies("System.Runtime.dll"),
+            CreateReferenceFromTrustedPlatformAssemblies("Microsoft.AspNetCore.Mvc.Core.dll"),
+            CreateReferenceFromTrustedPlatformAssemblies("Microsoft.AspNetCore.Mvc.Abstractions.dll"),
+        };
+
+        var projectInfo = ProjectInfo.Create(
+            projectId,
+            VersionStamp.Create(),
+            "TestProject",
+            "TestProject",
+            LanguageNames.CSharp,
+            filePath: projectPath,
+            metadataReferences: references,
+            compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var solutionInfo = SolutionInfo.Create(
+            SolutionId.CreateNewId(),
+            VersionStamp.Create(),
+            solutionPath,
+            projects: new[] { projectInfo });
+
+        workspace.AddSolution(solutionInfo);
+
+        var documentId = DocumentId.CreateNewId(projectId);
+        var documentPath = Path.Combine(projectDirectory, "TestDocument.cs");
+        File.WriteAllText(documentPath, source);
+        var sourceText = SourceText.From(source);
+        var documentInfo = DocumentInfo.Create(
+            documentId,
+            "TestDocument.cs",
+            loader: TextLoader.From(TextAndVersion.Create(sourceText, VersionStamp.Create())),
+            filePath: documentPath);
+
+        workspace.AddDocument(documentInfo);
+
+        return Task.FromResult((workspace, workspace.CurrentSolution, tempDirectory));
+    }
+
+    private static MetadataReference CreateReferenceFromTrustedPlatformAssemblies(string assemblyFileName)
+    {
+        var trustedPlatformAssemblies = (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string)
+            ?.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? Array.Empty<string>();
+
+        var assemblyPath = trustedPlatformAssemblies.FirstOrDefault(path =>
+            string.Equals(Path.GetFileName(path), assemblyFileName, StringComparison.OrdinalIgnoreCase));
+
+        if (assemblyPath is null)
+        {
+            throw new FileNotFoundException($"Unable to locate assembly '{assemblyFileName}' in the trusted platform assemblies.");
+        }
+
+        return MetadataReference.CreateFromFile(assemblyPath);
     }
 
     private static string GetRepositoryRoot()

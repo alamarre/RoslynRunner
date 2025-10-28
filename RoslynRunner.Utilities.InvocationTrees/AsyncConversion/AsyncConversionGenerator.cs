@@ -313,11 +313,18 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
             return updated;
         }
 
-        HasChanges = true;
+        var hasBody = updated.Body is not null || updated.ExpressionBody is not null;
+        if (!hasBody)
+        {
+            return updated;
+        }
+
+        var hasChanges = false;
 
         if (!updated.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)))
         {
             updated = updated.WithModifiers(updated.Modifiers.Add(SyntaxFactory.Token(SyntaxKind.AsyncKeyword)));
+            hasChanges = true;
         }
 
         var cancellationTokenParameter = SyntaxFactory.Parameter(SyntaxFactory.Identifier("cancellationToken"))
@@ -327,17 +334,28 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
         if (!updated.ParameterList.Parameters.Any(parameter => parameter.Identifier.ValueText == "cancellationToken"))
         {
             updated = updated.WithParameterList(updated.ParameterList.AddParameters(cancellationTokenParameter));
+            hasChanges = true;
         }
 
         var returnType = symbol.ReturnType;
         if (returnType.SpecialType == SpecialType.System_Void)
         {
-            updated = updated.WithReturnType(SyntaxFactory.ParseTypeName("System.Threading.Tasks.Task"));
+            var newReturnType = SyntaxFactory.ParseTypeName("System.Threading.Tasks.Task");
+            if (!updated.ReturnType.IsEquivalentTo(newReturnType))
+            {
+                updated = updated.WithReturnType(newReturnType);
+                hasChanges = true;
+            }
         }
         else
         {
             var displayType = returnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-            updated = updated.WithReturnType(SyntaxFactory.ParseTypeName($"System.Threading.Tasks.Task<{displayType}>"));
+            var newReturnType = SyntaxFactory.ParseTypeName($"System.Threading.Tasks.Task<{displayType}>");
+            if (!updated.ReturnType.IsEquivalentTo(newReturnType))
+            {
+                updated = updated.WithReturnType(newReturnType);
+                hasChanges = true;
+            }
         }
 
         if (_renameTransformedMethods)
@@ -346,8 +364,16 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
             if (!identifierText.EndsWith("Async", StringComparison.Ordinal))
             {
                 updated = updated.WithIdentifier(CreateIdentifier(updated.Identifier, identifierText + "Async"));
+                hasChanges = true;
             }
         }
+
+        if (!hasChanges)
+        {
+            return updated;
+        }
+
+        HasChanges = true;
 
         var annotation = new SyntaxAnnotation();
         updated = updated.WithAdditionalAnnotations(annotation);
