@@ -71,6 +71,18 @@ public static class ProjectExtensions
                 continue;
             }
 
+            // log compilation diagnostics
+            var diagnostics = compilation.GetDiagnostics(cancellationToken);
+            var errors = diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error);
+            if (errors.Any())
+            {
+                Console.WriteLine($"Compilation errors in project {project.Name}:");
+                foreach (var error in errors)
+                {
+                    Console.WriteLine(error.ToString());
+                }
+            }
+
             // Use global namespace traversal to get all types.
             List<INamedTypeSymbol> allTypes = GetAllTypes(compilation);
             foreach (var type in allTypes)
