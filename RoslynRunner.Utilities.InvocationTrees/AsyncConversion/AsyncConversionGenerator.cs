@@ -11,6 +11,7 @@ using Microsoft.CodeAnalysis.Operations;
 using RoslynRunner.Core;
 using RoslynRunner.Core.Extensions;
 using RoslynRunner.Core.QueueProcessing;
+using RoslynRunner.Processors;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
@@ -108,6 +109,14 @@ public sealed class AsyncConversionGenerator
         foreach (var method in additional)
         {
             eligible.Add(method.MethodSymbol);
+        }
+
+        foreach (var interfaceMethod in eligible.ToArray().SelectMany(method => method.FindImplementedInterfaceMethods()))
+        {
+            if (interfaceMethod is not null)
+            {
+                eligible.Add(interfaceMethod);
+            }
         }
 
         return (eligible, asyncAlternatives);
@@ -314,14 +323,16 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
         }
 
         var hasBody = updated.Body is not null || updated.ExpressionBody is not null;
-        if (!hasBody)
+        var isInterfaceMethod = symbol.ContainingType?.TypeKind == TypeKind.Interface;
+
+        if (!hasBody && !isInterfaceMethod)
         {
             return updated;
         }
 
         var hasChanges = false;
 
-        if (!updated.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)))
+        if (!isInterfaceMethod && !updated.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)))
         {
             updated = updated.WithModifiers(updated.Modifiers.Add(SyntaxFactory.Token(SyntaxKind.AsyncKeyword)));
             hasChanges = true;

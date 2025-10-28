@@ -121,7 +121,7 @@ public class AsyncConversionProcessorTests
     }
 
     [Test]
-    public async Task GenerateAsyncVersion_DoesNotAddAsyncModifierToInterfaceMethods()
+    public async Task GenerateAsyncVersion_UpdatesInterfaceMethodsToAsyncSignatures()
     {
         const string source = @"namespace TestNamespace;
 
@@ -170,6 +170,9 @@ public class Dependency
             var interfaceMethod = interfaceDeclaration.Members.OfType<MethodDeclarationSyntax>().Single();
 
             Assert.That(interfaceMethod.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.AsyncKeyword)), Is.False);
+            Assert.That(interfaceMethod.Identifier.Text, Is.EqualTo("BarAsync"));
+            Assert.That(interfaceMethod.ReturnType.ToString(), Is.EqualTo("System.Threading.Tasks.Task"));
+            Assert.That(interfaceMethod.ParameterList.Parameters.Any(parameter => parameter.Identifier.Text == "cancellationToken"), Is.True);
 
             var classDeclaration = document.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
                 .Single(cls => cls.Identifier.Text == "Foo");
