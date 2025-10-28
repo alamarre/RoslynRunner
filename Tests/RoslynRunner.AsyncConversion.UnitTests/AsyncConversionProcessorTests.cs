@@ -51,7 +51,7 @@ public class AsyncConversionProcessorTests
 
             var clientDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
                 .Any(cls => cls.Identifier.Text == "LegacyOrderClient"));
-            var clientMethod = clientDocument.ConvertedMethods.Single(m => m.AsyncMethod.Identifier.Text == "GetFormattedOrders");
+            var clientMethod = clientDocument.ConvertedMethods.Single(m => m.AsyncMethod.Identifier.Text == "GetFormattedOrdersAsync");
             Assert.That(clientMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
             Assert.That(clientMethod.AsyncMethod.ReturnType.ToString(),
                 Is.EqualTo("System.Threading.Tasks.Task<IEnumerable<string>>"));
@@ -70,7 +70,46 @@ public class AsyncConversionProcessorTests
             var repositoryDocument = result.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
                 .Any(cls => cls.Identifier.Text == "LegacyOrderRepository"));
             var repositoryMethods = repositoryDocument.ConvertedMethods;
-            Assert.That(repositoryMethods.Any(m => m.AsyncMethod.Identifier.Text == "GetPrimaryOrder"), Is.True);
+            Assert.That(repositoryMethods.Any(m => m.AsyncMethod.Identifier.Text == "GetPrimaryOrderAsync"), Is.True);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task GenerateAsyncVersion_DoesNotRenameMethodsWhenRequested()
+    {
+        var setup = await CreateLegacyWebAppSolutionAsync(SampleSourceFiles);
+        using var workspace = setup.Workspace;
+        var solution = setup.Solution;
+        var tempDirectory = setup.TempDirectory;
+
+        try
+        {
+            var cache = await CachedSymbolFinder.FromCache(solution);
+            var clientType = cache.GetSymbolByMetadataName("LegacyWebApp.Clients.LegacyOrderClient") as INamedTypeSymbol;
+            Assert.That(clientType, Is.Not.Null);
+
+            var generator = new AsyncConversionGenerator(cache, solution);
+            var result = await generator.GenerateAsyncVersion(
+                clientType!,
+                "GetFormattedOrders",
+                CancellationToken.None,
+                renameTransformedMethods: false);
+
+            Assert.That(result, Is.Not.Null);
+
+            var clientDocument = result!.Documents.Single(d => d.UpdatedRoot.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                .Any(cls => cls.Identifier.Text == "LegacyOrderClient"));
+            var clientMethod = clientDocument.ConvertedMethods.Single(m => m.AsyncMethod.Identifier.Text == "GetFormattedOrders");
+            Assert.That(clientMethod.AsyncMethod.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)), Is.True);
+            Assert.That(clientMethod.AsyncMethod.Identifier.Text, Is.EqualTo("GetFormattedOrders"));
+            Assert.That(clientMethod.AsyncMethod.Body!.ToString(), Does.Contain("await _coordinator.PrepareOrders("));
         }
         finally
         {
@@ -152,8 +191,8 @@ public class AsyncConversionProcessorTests
             var clientFile = Path.Combine(repositoryPath, SampleSourceFiles[3]);
             var relativeClientPath = Path.GetRelativePath(repositoryPath, clientFile).Replace('\\', '/');
             var branchContents = RunGit(repositoryPath, $"show {branchName}:{relativeClientPath}");
-            Assert.That(branchContents, Does.Contain("async Task<IEnumerable<string>> GetFormattedOrders"));
-            Assert.That(branchContents, Does.Contain("await _coordinator.PrepareOrders"));
+            Assert.That(branchContents, Does.Contain("async Task<IEnumerable<string>> GetFormattedOrdersAsync"));
+            Assert.That(branchContents, Does.Contain("await _coordinator.PrepareOrdersAsync"));
 
             var coordinatorFile = Path.Combine(repositoryPath, SampleSourceFiles[2]);
             var relativeCoordinatorPath = Path.GetRelativePath(repositoryPath, coordinatorFile).Replace('\\', '/');

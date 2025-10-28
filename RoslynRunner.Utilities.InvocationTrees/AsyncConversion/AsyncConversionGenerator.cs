@@ -29,7 +29,8 @@ public sealed class AsyncConversionGenerator
         INamedTypeSymbol type,
         string? methodName,
         CancellationToken cancellationToken,
-        InvocationTreeResult? invocationTreeResult = null)
+        InvocationTreeResult? invocationTreeResult = null,
+        bool renameTransformedMethods = true)
     {
         if (type is null)
         {
@@ -50,7 +51,12 @@ public sealed class AsyncConversionGenerator
             return null;
         }
 
-        var documents = await ConvertDocumentsAsync(eligibleMethods, asyncAlternatives, cancellationToken).ConfigureAwait(false);
+        var documents = await ConvertDocumentsAsync(
+                eligibleMethods,
+                asyncAlternatives,
+                cancellationToken,
+                renameTransformedMethods)
+            .ConfigureAwait(false);
         if (documents.Count == 0)
         {
             return null;
@@ -110,7 +116,8 @@ public sealed class AsyncConversionGenerator
     private async Task<List<AsyncDocumentConversion>> ConvertDocumentsAsync(
         HashSet<IMethodSymbol> eligibleMethods,
         Dictionary<IMethodSymbol, IMethodSymbol> asyncAlternatives,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool renameTransformedMethods)
     {
         var documentsToProcess = CollectDocuments(eligibleMethods);
         var conversions = new List<AsyncDocumentConversion>();
@@ -119,7 +126,13 @@ public sealed class AsyncConversionGenerator
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var conversion = await ConvertDocumentAsync(document, eligibleMethods, asyncAlternatives, cancellationToken).ConfigureAwait(false);
+            var conversion = await ConvertDocumentAsync(
+                    document,
+                    eligibleMethods,
+                    asyncAlternatives,
+                    cancellationToken,
+                    renameTransformedMethods)
+                .ConfigureAwait(false);
             if (conversion is not null)
             {
                 conversions.Add(conversion);
@@ -158,7 +171,8 @@ public sealed class AsyncConversionGenerator
         Document document,
         HashSet<IMethodSymbol> eligibleMethods,
         Dictionary<IMethodSymbol, IMethodSymbol> asyncAlternatives,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool renameTransformedMethods)
     {
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
         var syntaxRoot = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
@@ -168,7 +182,11 @@ public sealed class AsyncConversionGenerator
             return null;
         }
 
-        var rewriter = new AsyncDocumentRewriter(semanticModel, eligibleMethods, asyncAlternatives);
+        var rewriter = new AsyncDocumentRewriter(
+            semanticModel,
+            eligibleMethods,
+            asyncAlternatives,
+            renameTransformedMethods);
         var visitedRoot = rewriter.Visit(originalRoot);
         if (visitedRoot is not CompilationUnitSyntax updatedRoot || !rewriter.HasChanges)
         {
@@ -262,16 +280,19 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
     private readonly SemanticModel _model;
     private readonly HashSet<IMethodSymbol> _methods;
     private readonly Dictionary<IMethodSymbol, IMethodSymbol> _alternatives;
+    private readonly bool _renameTransformedMethods;
     private readonly List<AsyncMethodUpdate> _methodUpdates = new();
 
     public AsyncDocumentRewriter(
         SemanticModel model,
         HashSet<IMethodSymbol> methods,
-        Dictionary<IMethodSymbol, IMethodSymbol> alternatives)
+        Dictionary<IMethodSymbol, IMethodSymbol> alternatives,
+        bool renameTransformedMethods)
     {
         _model = model;
         _methods = methods;
         _alternatives = alternatives;
+        _renameTransformedMethods = renameTransformedMethods;
     }
 
     public bool HasChanges { get; private set; }
@@ -319,6 +340,15 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
             updated = updated.WithReturnType(SyntaxFactory.ParseTypeName($"System.Threading.Tasks.Task<{displayType}>"));
         }
 
+        if (_renameTransformedMethods)
+        {
+            var identifierText = updated.Identifier.ValueText;
+            if (!identifierText.EndsWith("Async", StringComparison.Ordinal))
+            {
+                updated = updated.WithIdentifier(CreateIdentifier(updated.Identifier, identifierText + "Async"));
+            }
+        }
+
         var annotation = new SyntaxAnnotation();
         updated = updated.WithAdditionalAnnotations(annotation);
         _methodUpdates.Add(new AsyncMethodUpdate(node, annotation));
@@ -363,7 +393,18 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
         {
             HasChanges = true;
 
-            var awaitedInvocation = invocation.WithArgumentList(
+            var awaitedInvocation = invocation;
+
+            if (_renameTransformedMethods)
+            {
+                var newName = operation.TargetMethod.Name.EndsWith("Async", StringComparison.Ordinal)
+                    ? operation.TargetMethod.Name
+                    : operation.TargetMethod.Name + "Async";
+                awaitedInvocation = awaitedInvocation.WithExpression(
+                    RenameInvocationTarget(awaitedInvocation.Expression, newName));
+            }
+
+            awaitedInvocation = awaitedInvocation.WithArgumentList(
                 invocation.ArgumentList.AddArguments(
                     SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))));
 
@@ -371,6 +412,33 @@ internal sealed class AsyncDocumentRewriter : CSharpSyntaxRewriter
         }
 
         return visited;
+    }
+
+    private static SyntaxToken CreateIdentifier(SyntaxToken original, string newText)
+    {
+        return SyntaxFactory.Identifier(original.LeadingTrivia, newText, original.TrailingTrivia);
+    }
+
+    private static SimpleNameSyntax RenameSimpleName(SimpleNameSyntax name, string newName)
+    {
+        return name switch
+        {
+            IdentifierNameSyntax identifierName => identifierName.WithIdentifier(CreateIdentifier(identifierName.Identifier, newName)),
+            GenericNameSyntax genericName => genericName.WithIdentifier(CreateIdentifier(genericName.Identifier, newName)),
+            _ => SyntaxFactory.IdentifierName(newName),
+        };
+    }
+
+    private static ExpressionSyntax RenameInvocationTarget(ExpressionSyntax expression, string newName)
+    {
+        return expression switch
+        {
+            MemberAccessExpressionSyntax memberAccess => memberAccess.WithName(RenameSimpleName(memberAccess.Name, newName)),
+            MemberBindingExpressionSyntax memberBinding => memberBinding.WithName(RenameSimpleName(memberBinding.Name, newName)),
+            IdentifierNameSyntax identifier => RenameSimpleName(identifier, newName),
+            GenericNameSyntax genericName => RenameSimpleName(genericName, newName),
+            _ => expression,
+        };
     }
 }
 
