@@ -89,12 +89,46 @@ public class SomeClass
         changes.NewChangeSet("b", "Update MethodB").ReplaceMethod(document, methods.MethodB, AddCancellationToken(methods.MethodB));
 
         var branchName = $"feature/{Guid.NewGuid():N}";
-        await changes.ApplyAllAsync(branchName, "Add CancellationToken to both methods", CancellationToken.None).ConfigureAwait(false);
+        await changes.ApplyAllAsync(branchName, "Add CancellationToken to both methods", cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
         using var repo = new Repository(repository.RepositoryPath);
         var branch = repo.Branches[branchName];
         Assert.That(branch, Is.Not.Null);
         Assert.That(branch!.Tip.Message.Trim(), Is.EqualTo("Add CancellationToken to both methods"));
+
+        Commands.Checkout(repo, branch);
+        var content = await File.ReadAllTextAsync(repository.DocumentPath).ConfigureAwait(false);
+        Assert.That(content, Does.Contain("CancellationToken cancellationToken = default"));
+        Assert.That(content, Does.Contain("using System.Threading;"));
+
+        Commands.Checkout(repo, repo.Branches[repository.DefaultBranchName]);
+        var baseContent = await File.ReadAllTextAsync(repository.DocumentPath).ConfigureAwait(false);
+        Assert.That(baseContent, Is.EqualTo(InitialSource.Replace("\r\n", "\n")));
+    }
+
+    [Test]
+    public async Task ApplyAllAsync_WhenCommittingSeparately_CommitsEachChangeSetToSameBranch()
+    {
+        await using var repository = await TestRepository.CreateAsync(InitialSource).ConfigureAwait(false);
+        using var workspace = CreateWorkspace(repository);
+        var document = workspace.CurrentSolution.Projects.Single().Documents.Single();
+        var methods = await GetMethodDeclarationsAsync(document).ConfigureAwait(false);
+
+        var changes = new RoslynChanges(repository.RepositoryPath);
+        changes.NewChangeSet("a", "Update MethodA").ReplaceMethod(document, methods.MethodA, AddCancellationToken(methods.MethodA));
+        changes.NewChangeSet("b", "Update MethodB").ReplaceMethod(document, methods.MethodB, AddCancellationToken(methods.MethodB));
+
+        var branchName = $"feature/{Guid.NewGuid():N}";
+        await changes.ApplyAllAsync(branchName, "Combined message", commitChangeSetsSeparately: true, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        using var repo = new Repository(repository.RepositoryPath);
+        var branch = repo.Branches[branchName];
+        Assert.That(branch, Is.Not.Null);
+
+        var commitMessages = branch!.Commits.Take(2).Select(c => c.Message.Trim()).ToList();
+        var allCommitMessages = branch.Commits.Select(c => c.Message.Trim()).ToList();
+        Assert.That(commitMessages[0], Is.EqualTo("Update MethodB"));
+        Assert.That(allCommitMessages, Does.Contain("Update MethodA"));
 
         Commands.Checkout(repo, branch);
         var content = await File.ReadAllTextAsync(repository.DocumentPath).ConfigureAwait(false);

@@ -53,7 +53,17 @@ public sealed class RoslynChangeSet
         AddTransformation(document, async (doc, ct) =>
         {
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var newRoot = root!.ReplaceNode(originalMethod, annotatedReplacement);
+            var currentMethod = root!
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .FirstOrDefault(m => m.IsEquivalentTo(originalMethod));
+
+            if (currentMethod is null)
+            {
+                return doc;
+            }
+
+            var newRoot = root.ReplaceNode(currentMethod, annotatedReplacement);
             return doc.WithSyntaxRoot(newRoot);
         });
     }
@@ -83,7 +93,16 @@ public sealed class RoslynChangeSet
         AddTransformation(document, async (doc, ct) =>
         {
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            var newRoot = root!.ReplaceNode(originalNode, annotatedReplacement);
+            var currentNode = root!
+                .DescendantNodesAndSelf()
+                .FirstOrDefault(node => node.IsEquivalentTo(originalNode));
+
+            if (currentNode is null)
+            {
+                return doc;
+            }
+
+            var newRoot = root.ReplaceNode(currentNode, annotatedReplacement);
             return doc.WithSyntaxRoot(newRoot);
         });
     }

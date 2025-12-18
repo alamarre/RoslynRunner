@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LibGit2Sharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -46,22 +45,22 @@ public sealed class RoslynChanges
             cancellationToken.ThrowIfCancellationRequested();
 
             var branchName = branchPrefix + changeSet.Id;
-            await ApplyToBranchAsync(branchName, changeSet.Message, new[] { changeSet }, baseBranch, cancellationToken).ConfigureAwait(false);
+            await ApplyToBranchAsync(branchName, changeSet.Message, new[] { changeSet }, baseBranch, commitChangeSetsSeparately: false, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public Task ApplyAllAsync(string branchName, string message, CancellationToken cancellationToken)
+    public Task ApplyAllAsync(string branchName, string message, bool commitChangeSetsSeparately = false, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(branchName);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        return ApplyAllInternalAsync(branchName, message, cancellationToken);
+        return ApplyAllInternalAsync(branchName, message, commitChangeSetsSeparately, cancellationToken);
     }
 
-    private async Task ApplyAllInternalAsync(string branchName, string message, CancellationToken cancellationToken)
+    private async Task ApplyAllInternalAsync(string branchName, string message, bool commitChangeSetsSeparately, CancellationToken cancellationToken)
     {
         var baseBranch = await GetCurrentBranchNameAsync(cancellationToken).ConfigureAwait(false);
-        await ApplyToBranchAsync(branchName, message, _changeSets, baseBranch, cancellationToken).ConfigureAwait(false);
+        await ApplyToBranchAsync(branchName, message, _changeSets, baseBranch, commitChangeSetsSeparately, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<string> GetDiffAsync(CancellationToken cancellationToken)
@@ -81,7 +80,7 @@ public sealed class RoslynChanges
         return await GenerateDiffAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ApplyToBranchAsync(string branchName, string commitMessage, IEnumerable<RoslynChangeSet> changeSets, string baseBranch, CancellationToken cancellationToken)
+    private async Task ApplyToBranchAsync(string branchName, string commitMessage, IEnumerable<RoslynChangeSet> changeSets, string baseBranch, bool commitChangeSetsSeparately, CancellationToken cancellationToken)
     {
         var changeSetList = changeSets.ToList();
         if (changeSetList.Count == 0)
@@ -89,36 +88,86 @@ public sealed class RoslynChanges
             return;
         }
 
-        var updatedDocuments = await BuildUpdatedDocumentsAsync(changeSetList, cancellationToken).ConfigureAwait(false);
+        using var repo = new Repository(_repositoryPath);
+        var baseBranchRef = repo.Branches[baseBranch] ?? throw new InvalidOperationException($"Base branch '{baseBranch}' not found.");
+        var targetBranch = ResetBranch(repo, branchName, baseBranchRef);
+        Commands.Checkout(repo, targetBranch);
+
+        try
+        {
+            if (commitChangeSetsSeparately)
+            {
+                await CommitEachChangeSetAsync(repo, changeSetList, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await CommitCombinedChangeSetsAsync(repo, commitMessage, changeSetList, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Commands.Checkout(repo, baseBranchRef);
+        }
+    }
+
+    private async Task CommitCombinedChangeSetsAsync(
+        Repository repo,
+        string commitMessage,
+        IReadOnlyCollection<RoslynChangeSet> changeSets,
+        CancellationToken cancellationToken)
+    {
+        var updatedDocuments = await BuildUpdatedDocumentsAsync(changeSets, cancellationToken).ConfigureAwait(false);
         if (updatedDocuments.Count == 0)
         {
             return;
         }
 
         var cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
-        await RunGitAsync($"checkout {QuoteArgument(baseBranch)}", cancellationToken).ConfigureAwait(false);
-        await RunGitAsync($"checkout -B {QuoteArgument(branchName)} {QuoteArgument(baseBranch)}", cancellationToken).ConfigureAwait(false);
-
-        try
+        if (!await HasDocumentChangesAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false))
         {
-            await WriteDocumentsAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
-            foreach (var document in cleanedDocuments.Values)
+        await WriteDocumentsAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
+        StageDocuments(repo, cleanedDocuments.Values, cancellationToken);
+        Commit(repo, commitMessage);
+    }
+
+    private async Task CommitEachChangeSetAsync(
+        Repository repo,
+        IReadOnlyCollection<RoslynChangeSet> changeSets,
+        CancellationToken cancellationToken)
+    {
+        var appliedChangeSets = new List<RoslynChangeSet>();
+
+        foreach (var changeSet in changeSets)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            appliedChangeSets.Add(changeSet);
+
+            var updatedDocuments = await BuildUpdatedDocumentsAsync(appliedChangeSets, cancellationToken).ConfigureAwait(false);
+            if (updatedDocuments.Count == 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var relativePath = Path.GetRelativePath(_repositoryPath, document.FilePath!);
-                await RunGitAsync($"add {QuoteArgument(relativePath)}", cancellationToken).ConfigureAwait(false);
+                continue;
             }
 
-            await RunGitAsync($"commit -m {QuoteArgument(commitMessage)}", cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            await RunGitAsync($"checkout {QuoteArgument(baseBranch)}", cancellationToken).ConfigureAwait(false);
+            var cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+            var hasChanges = await HasDocumentChangesAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
+            if (!hasChanges)
+            {
+                continue;
+            }
+
+            await WriteDocumentsAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
+            StageDocuments(repo, cleanedDocuments.Values, cancellationToken);
+            Commit(repo, changeSet.Message);
         }
     }
 
-    private async Task<Dictionary<DocumentId, Document>> BuildUpdatedDocumentsAsync(IEnumerable<RoslynChangeSet> changeSets, CancellationToken cancellationToken)
+    private async Task<Dictionary<DocumentId, Document>> BuildUpdatedDocumentsAsync(
+        IEnumerable<RoslynChangeSet> changeSets,
+        CancellationToken cancellationToken)
     {
         var documents = new Dictionary<DocumentId, Document>();
 
@@ -171,6 +220,29 @@ public sealed class RoslynChanges
         }
     }
 
+    private static async Task<bool> HasDocumentChangesAsync(Dictionary<DocumentId, Document> documents, CancellationToken cancellationToken)
+    {
+        foreach (var document in documents.Values)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(document.FilePath))
+            {
+                throw new InvalidOperationException($"Document '{document.Name}' does not have a file path.");
+            }
+
+            var existingContent = await File.ReadAllTextAsync(document.FilePath!, cancellationToken).ConfigureAwait(false);
+            var newContent = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!string.Equals(existingContent, newContent.ToString(), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private async Task<string> GenerateDiffAsync(Dictionary<DocumentId, Document> documents, CancellationToken cancellationToken)
     {
         var originalContents = new Dictionary<string, string>();
@@ -191,7 +263,7 @@ public sealed class RoslynChanges
                 await File.WriteAllTextAsync(filePath, text.ToString(), cancellationToken).ConfigureAwait(false);
             }
 
-            var diff = await ExecuteGitDiffAsync(documents.Values.Select(d => d.FilePath!).ToArray(), cancellationToken).ConfigureAwait(false);
+            var diff = await GenerateLibGitDiffAsync(documents.Values.Select(d => d.FilePath!).ToArray(), cancellationToken).ConfigureAwait(false);
             return diff;
         }
         finally
@@ -203,34 +275,13 @@ public sealed class RoslynChanges
         }
     }
 
-    private async Task<string> ExecuteGitDiffAsync(string[] paths, CancellationToken cancellationToken)
+    private Task<string> GenerateLibGitDiffAsync(string[] paths, CancellationToken cancellationToken)
     {
-        var arguments = new StringBuilder("diff --");
-        foreach (var path in paths)
-        {
-            var escaped = path.Replace("\"", "\\\"");
-            arguments.Append(' ').Append('"').Append(escaped).Append('"');
-        }
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = _repositoryPath,
-            Arguments = arguments.ToString(),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-
-        using var process = Process.Start(psi);
-        if (process is null)
-        {
-            throw new InvalidOperationException("Unable to start git diff process.");
-        }
-
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var output = await process.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
-
-        return output;
+        using var repo = new Repository(_repositoryPath);
+        var relativePaths = paths.Select(p => Path.GetRelativePath(_repositoryPath, p)).ToArray();
+        var patch = repo.Diff.Compare<Patch>(repo.Head.Tip.Tree, DiffTargets.WorkingDirectory, relativePaths);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(patch.Content);
     }
 
     // based on https://github.com/dotnet/roslyn/blob/aff251d4cf72d8f84fa16876ae94c30d975b4aaa/src/Workspaces/Core/Portable/CodeActions/CodeAction.cs#L521
@@ -250,43 +301,38 @@ public sealed class RoslynChanges
         return document;
     }
 
-    private async Task<string> GetCurrentBranchNameAsync(CancellationToken cancellationToken)
+    private Task<string> GetCurrentBranchNameAsync(CancellationToken cancellationToken)
     {
-        var output = await RunGitAsync("rev-parse --abbrev-ref HEAD", cancellationToken, captureOutput: true).ConfigureAwait(false);
-        return output.Trim();
+        using var repo = new Repository(_repositoryPath);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(repo.Head.FriendlyName);
     }
 
-    private async Task<string> RunGitAsync(string arguments, CancellationToken cancellationToken, bool captureOutput = false)
+    private static Branch ResetBranch(Repository repo, string branchName, Branch baseBranch)
     {
-        var psi = new ProcessStartInfo
+        var existingBranch = repo.Branches[branchName];
+        if (existingBranch is not null)
         {
-            FileName = "git",
-            WorkingDirectory = _repositoryPath,
-            Arguments = arguments,
-            RedirectStandardOutput = captureOutput,
-            RedirectStandardError = true,
-        };
-
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start git process.");
-
-        var stdOutTask = captureOutput ? process.StandardOutput.ReadToEndAsync() : Task.FromResult(string.Empty);
-        var stdErrTask = process.StandardError.ReadToEndAsync();
-
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var error = await stdErrTask.ConfigureAwait(false);
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"git {arguments} failed with exit code {process.ExitCode}:{Environment.NewLine}{error}");
+            repo.Branches.Remove(existingBranch);
         }
 
-        return captureOutput ? await stdOutTask.ConfigureAwait(false) : string.Empty;
+        return repo.CreateBranch(branchName, baseBranch.Tip);
     }
 
-    private static string QuoteArgument(string value)
+    private static void StageDocuments(Repository repo, IEnumerable<Document> documents, CancellationToken cancellationToken)
     {
-        var escaped = value.Replace("\"", "\\\"");
-        return $"\"{escaped}\"";
+        foreach (var document in documents)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = Path.GetRelativePath(repo.Info.WorkingDirectory, document.FilePath!);
+            Commands.Stage(repo, relativePath);
+        }
+    }
+
+    private static void Commit(Repository repo, string message)
+    {
+        var signature = repo.Config.BuildSignature(DateTimeOffset.Now);
+        repo.Commit(message, signature, signature);
     }
 
     private static async Task<Document> AddMissingUsingsAsync(Document document, CancellationToken cancellationToken)
