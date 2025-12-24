@@ -79,7 +79,7 @@ public class AsyncConversionProcessor : ISolutionProcessor<AsyncConversionParame
         var changeSet = roslynChanges.NewChangeSet(changeSetId, commitMessage);
         ApplyDocumentConversions(changeSet, conversionResult.Documents, solution, context.ReplaceExistingMethods);
 
-        await roslynChanges.ApplyAllAsync(context.BranchName, commitMessage, cancellationToken).ConfigureAwait(false);
+        await roslynChanges.ApplyAllAsync(context.BranchName, commitMessage, commitChangeSetsSeparately: false, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         RunContextAccessor.RunContext.Output.Add($"Updated branch '{context.BranchName}' with async conversions.");
     }
