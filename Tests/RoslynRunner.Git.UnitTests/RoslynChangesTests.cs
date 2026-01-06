@@ -50,7 +50,7 @@ public class SomeClass
         secondChange.ReplaceMethod(document, methods.MethodB, AddCancellationToken(methods.MethodB));
 
         var branchPrefix = $"test/{Guid.NewGuid():N}-";
-        await changes.ApplyEachAsync(branchPrefix, CancellationToken.None).ConfigureAwait(false);
+        await changes.ApplyEachAsync(branchPrefix, cleanup: true, CancellationToken.None).ConfigureAwait(false);
 
         using var repo = new Repository(repository.RepositoryPath);
         var branchA = repo.Branches[branchPrefix + "a"];
@@ -150,7 +150,7 @@ public class SomeClass
 
         var changes = new RoslynChanges(repository.RepositoryPath);
         changes.NewChangeSet("a", "Update MethodA").ReplaceMethod(document, methods.MethodA, AddCancellationToken(methods.MethodA));
-        var diff = await changes.GetDiffAsync(CancellationToken.None).ConfigureAwait(false);
+        var diff = await changes.GetDiffAsync(cleanup: true, CancellationToken.None).ConfigureAwait(false);
 
         Assert.That(diff, Does.Contain("+    public Task MethodA("));
         Assert.That(diff, Does.Contain("CancellationToken cancellationToken = default"));

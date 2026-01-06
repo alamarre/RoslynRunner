@@ -28,7 +28,7 @@ public sealed class RoslynChangeSet
 
     internal IReadOnlyDictionary<DocumentId, RoslynDocumentChange> DocumentChanges => _documentChanges;
 
-    public void ReplaceMethod(Document document, MethodDeclarationSyntax originalMethod, MethodDeclarationSyntax replacementMethod)
+    public void ReplaceMethod(Document document, MethodDeclarationSyntax originalMethod, MethodDeclarationSyntax replacementMethod, bool addAnnotations = false)
     {
         if (document is null)
         {
@@ -45,10 +45,13 @@ public sealed class RoslynChangeSet
             throw new ArgumentNullException(nameof(replacementMethod));
         }
 
-        var annotatedReplacement = replacementMethod.WithAdditionalAnnotations(
-            Formatter.Annotation,
-            Simplifier.Annotation,
-            Simplifier.AddImportsAnnotation);
+        if (addAnnotations)
+        {
+            replacementMethod = replacementMethod.WithAdditionalAnnotations(
+                Formatter.Annotation,
+                Simplifier.Annotation,
+                Simplifier.AddImportsAnnotation);
+        }
 
         AddTransformation(document, async (doc, ct) =>
         {
@@ -63,12 +66,12 @@ public sealed class RoslynChangeSet
                 return doc;
             }
 
-            var newRoot = root.ReplaceNode(currentMethod, annotatedReplacement);
+            var newRoot = root.ReplaceNode(currentMethod, replacementMethod);
             return doc.WithSyntaxRoot(newRoot);
         });
     }
 
-    public void ReplaceNode(Document document, SyntaxNode originalNode, SyntaxNode replacementNode)
+    public void ReplaceNode(Document document, SyntaxNode originalNode, SyntaxNode replacementNode, bool addAnnotations = false)
     {
         if (document is null)
         {
@@ -85,11 +88,13 @@ public sealed class RoslynChangeSet
             throw new ArgumentNullException(nameof(replacementNode));
         }
 
-        var annotatedReplacement = replacementNode.WithAdditionalAnnotations(
-            Formatter.Annotation,
-            Simplifier.Annotation,
-            Simplifier.AddImportsAnnotation);
-
+        if (addAnnotations)
+        {
+            replacementNode = replacementNode.WithAdditionalAnnotations(
+                Formatter.Annotation,
+                Simplifier.Annotation,
+                Simplifier.AddImportsAnnotation);
+        }
         AddTransformation(document, async (doc, ct) =>
         {
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
@@ -102,7 +107,7 @@ public sealed class RoslynChangeSet
                 return doc;
             }
 
-            var newRoot = root.ReplaceNode(currentNode, annotatedReplacement);
+            var newRoot = root.ReplaceNode(currentNode, replacementNode);
             return doc.WithSyntaxRoot(newRoot);
         });
     }

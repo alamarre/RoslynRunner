@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using LibGit2Sharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -12,6 +6,13 @@ using Microsoft.CodeAnalysis.Editing;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Simplification;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RoslynRunner.Git;
 
@@ -34,7 +35,7 @@ public sealed class RoslynChanges
         return changeSet;
     }
 
-    public async Task ApplyEachAsync(string branchPrefix, CancellationToken cancellationToken)
+    public async Task ApplyEachAsync(string branchPrefix, bool cleanup = false, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(branchPrefix);
 
@@ -45,25 +46,25 @@ public sealed class RoslynChanges
             cancellationToken.ThrowIfCancellationRequested();
 
             var branchName = branchPrefix + changeSet.Id;
-            await ApplyToBranchAsync(branchName, changeSet.Message, new[] { changeSet }, baseBranch, commitChangeSetsSeparately: false, cancellationToken).ConfigureAwait(false);
+            await ApplyToBranchAsync(branchName, changeSet.Message, new[] { changeSet }, baseBranch, commitChangeSetsSeparately: false, cleanup: cleanup, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public Task ApplyAllAsync(string branchName, string message, bool commitChangeSetsSeparately = false, CancellationToken cancellationToken = default)
+    public Task ApplyAllAsync(string branchName, string message, bool commitChangeSetsSeparately = false, bool cleanup = false, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(branchName);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        return ApplyAllInternalAsync(branchName, message, commitChangeSetsSeparately, cancellationToken);
+        return ApplyAllInternalAsync(branchName, message, commitChangeSetsSeparately, cleanup, cancellationToken);
     }
 
-    private async Task ApplyAllInternalAsync(string branchName, string message, bool commitChangeSetsSeparately, CancellationToken cancellationToken)
+    private async Task ApplyAllInternalAsync(string branchName, string message, bool commitChangeSetsSeparately, bool cleanup, CancellationToken cancellationToken)
     {
         var baseBranch = await GetCurrentBranchNameAsync(cancellationToken).ConfigureAwait(false);
-        await ApplyToBranchAsync(branchName, message, _changeSets, baseBranch, commitChangeSetsSeparately, cancellationToken).ConfigureAwait(false);
+        await ApplyToBranchAsync(branchName, message, _changeSets, baseBranch, commitChangeSetsSeparately, cleanup, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<string> GetDiffAsync(CancellationToken cancellationToken)
+    public async Task<string> GetDiffAsync(bool cleanup = false, CancellationToken cancellationToken = default)
     {
         if (_changeSets.Count == 0)
         {
@@ -76,11 +77,15 @@ public sealed class RoslynChanges
             return string.Empty;
         }
 
-        var cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+        var cleanedDocuments = updatedDocuments;
+        if (cleanup)
+        {
+            cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+        }
         return await GenerateDiffAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ApplyToBranchAsync(string branchName, string commitMessage, IEnumerable<RoslynChangeSet> changeSets, string baseBranch, bool commitChangeSetsSeparately, CancellationToken cancellationToken)
+    private async Task ApplyToBranchAsync(string branchName, string commitMessage, IEnumerable<RoslynChangeSet> changeSets, string baseBranch, bool commitChangeSetsSeparately, bool cleanup = false, CancellationToken cancellationToken = default)
     {
         var changeSetList = changeSets.ToList();
         if (changeSetList.Count == 0)
@@ -97,11 +102,11 @@ public sealed class RoslynChanges
         {
             if (commitChangeSetsSeparately)
             {
-                await CommitEachChangeSetAsync(repo, changeSetList, cancellationToken).ConfigureAwait(false);
+                await CommitEachChangeSetAsync(repo, changeSetList, cleanup, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await CommitCombinedChangeSetsAsync(repo, commitMessage, changeSetList, cancellationToken).ConfigureAwait(false);
+                await CommitCombinedChangeSetsAsync(repo, commitMessage, changeSetList, cleanup, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -114,6 +119,7 @@ public sealed class RoslynChanges
         Repository repo,
         string commitMessage,
         IReadOnlyCollection<RoslynChangeSet> changeSets,
+        bool cleanup,
         CancellationToken cancellationToken)
     {
         var updatedDocuments = await BuildUpdatedDocumentsAsync(changeSets, cancellationToken).ConfigureAwait(false);
@@ -122,7 +128,11 @@ public sealed class RoslynChanges
             return;
         }
 
-        var cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+        var cleanedDocuments = updatedDocuments;
+        
+        if(cleanup) {
+            cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+        }
         if (!await HasDocumentChangesAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false))
         {
             return;
@@ -136,6 +146,7 @@ public sealed class RoslynChanges
     private async Task CommitEachChangeSetAsync(
         Repository repo,
         IReadOnlyCollection<RoslynChangeSet> changeSets,
+        bool cleanup,
         CancellationToken cancellationToken)
     {
         var appliedChangeSets = new List<RoslynChangeSet>();
@@ -152,7 +163,11 @@ public sealed class RoslynChanges
                 continue;
             }
 
-            var cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+            var cleanedDocuments = updatedDocuments;
+            if (cleanup)
+            {
+                cleanedDocuments = await CleanupDocumentsAsync(updatedDocuments, cancellationToken).ConfigureAwait(false);
+            }
             var hasChanges = await HasDocumentChangesAsync(cleanedDocuments, cancellationToken).ConfigureAwait(false);
             if (!hasChanges)
             {
@@ -204,6 +219,17 @@ public sealed class RoslynChanges
         return cleaned;
     }
 
+    public static Encoding GetEncoding(Document document)
+    {
+        using var reader = new StreamReader(document.FilePath!, Encoding.Default, true);
+
+        if (reader.Peek() >= 0) { // you need this!
+            reader.Read();
+        }
+
+        return reader.CurrentEncoding;
+    }
+
     private async Task WriteDocumentsAsync(Dictionary<DocumentId, Document> documents, CancellationToken cancellationToken)
     {
         foreach (var (_, document) in documents)
@@ -216,7 +242,9 @@ public sealed class RoslynChanges
             }
 
             var text = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-            await File.WriteAllTextAsync(document.FilePath, text.ToString(), cancellationToken).ConfigureAwait(false);
+            // get the bom if appropriate
+            var encoding = GetEncoding(document);
+            await File.WriteAllTextAsync(document.FilePath, text.ToString(), encoding, cancellationToken).ConfigureAwait(false);
         }
     }
 
