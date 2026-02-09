@@ -2,7 +2,6 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Build.Locator;
 using ModelContextProtocol.Server;
 using MudBlazor.Services;
 using RoslynRunner;
@@ -14,12 +13,6 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using RoslynRunner.Runs;
 using RoslynRunner.Data;
-
-try
-{
-    MSBuildLocator.RegisterDefaults();
-}
-catch (Exception) { }
 
 var builder = WebApplication.CreateBuilder(args);
 
