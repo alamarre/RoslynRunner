@@ -10,7 +10,9 @@ using RoslynRunner.Core;
 
 namespace RoslynRunner.SolutionProcessors;
 
-public record AnalyzerContext(string AnalyzerProject, string TargetProject, List<string> AnalyzerNames);
+public record AnalyzerContext(string AnalyzerProject, string TargetProject, List<string> AnalyzerNames, string? AssemblyLoadContextPath = null);
+
+public record GeneratedFile(string path, string content);
 
 public class AnalyzerRunner : ISolutionProcessor
 {
@@ -43,7 +45,7 @@ public class AnalyzerRunner : ISolutionProcessor
         }
 
         var analyzerCompilation = await project.GetCompilationAsync(cancellationToken);
-        var assemblyLoadContext = new TestAssemblyLoadContext(null);
+        var assemblyLoadContext = new TestAssemblyLoadContext(analyzerContext.AssemblyLoadContextPath);
         var assembly = CompilationTools.GetAssembly(analyzerCompilation!, assemblyLoadContext);
 
         var analyzers = analyzerContext.AnalyzerNames.Select(a => assembly!.CreateInstance(a))
@@ -53,20 +55,64 @@ public class AnalyzerRunner : ISolutionProcessor
         logger.LogInformation($"analyzers found {analyzers.Count}");
         var targetProject = solution.Projects.FirstOrDefault(p => p.Name == analyzerContext.TargetProject);
         var projectCompilation = await targetProject!.GetCompilationAsync(cancellationToken);
+        if (projectCompilation is null)
+        {
+            return;
+        }
+
+       
         var runContext = RunContextAccessor.RunContext;
         if (diagnosticAnalyzers.Any())
         {
             var diagnosticCompilation = projectCompilation!.WithAnalyzers(diagnosticAnalyzers.ToImmutableArray());
             var diagnostics = await diagnosticCompilation.GetAllDiagnosticsAsync(cancellationToken);
-            runContext.Output.AddRange(diagnostics.Select(d => d.ToString()));
+            runContext.Errors.AddRange(diagnostics.Select(d => d.ToString()));
         }
 
         var incrementalGenerators = analyzers.Where(a => a is IIncrementalGenerator)
             .Cast<IIncrementalGenerator>()
             .Select(a => a.AsSourceGenerator());
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(incrementalGenerators);
-        var nextStep = driver.RunGenerators(projectCompilation!);
-        var runResult = nextStep.GetRunResult();
-        runContext.Output.AddRange(runResult.Diagnostics.Select(d => d.ToString()));
+       
+
+        
+       
+
+        if(incrementalGenerators.Any())
+        {
+
+            // Build a base compilation without any source-generated syntax trees.
+            IEnumerable<SyntaxTree> nonGeneratedTrees =
+                projectCompilation.SyntaxTrees.Where(static tree => !tree.FilePath.Contains(".g.", StringComparison.OrdinalIgnoreCase)
+                    && !tree.FilePath.Contains(".generated.", StringComparison.OrdinalIgnoreCase));
+
+            CSharpCompilation originalCompilation = CSharpCompilation.Create(
+                assemblyName: projectCompilation.AssemblyName,
+                syntaxTrees: nonGeneratedTrees,
+                references: projectCompilation.References,
+                options: (CSharpCompilationOptions)projectCompilation.Options);
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(incrementalGenerators);
+            var nextStep = driver.RunGeneratorsAndUpdateCompilation(originalCompilation!, out var updatedCompilation, out var runnerDiagnostics);
+
+            var generatedTrees = updatedCompilation.SyntaxTrees.Where(t => !projectCompilation!.SyntaxTrees.Contains(t)).ToList();
+
+            runContext.Errors.AddRange(runnerDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()));
+
+            GeneratedFile[] generatedFiles = generatedTrees.Select(t =>
+            {
+                var hintName = t.FilePath;
+                var content = t.GetText().ToString();
+                return new GeneratedFile(hintName, content);
+            }).ToArray();
+
+            var generated = updatedCompilation.SyntaxTrees.Where(s => s.FilePath.EndsWith(".generated.cs")).ToList();
+            var shouldNotExist = generated.Where(g => !generatedTrees.Contains(g));
+            if(shouldNotExist.Any())
+            {
+                generatedFiles = generatedFiles.Concat(shouldNotExist.Select(g => new GeneratedFile(g.FilePath, g.GetText().ToString()))).ToArray();
+            }
+            string contents = JsonSerializer.Serialize(generatedFiles);
+            runContext.Output.Add(contents);
+        }
     }
 }

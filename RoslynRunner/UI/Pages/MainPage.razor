@@ -41,6 +41,9 @@
                 <MudItem>
                     <MudTextField @bind-Value="analyzerNames" Label=@Labels.AnalyzerNames Variant="Variant.Outlined" />
                 </MudItem>
+                <MudItem>
+                    <MudTextField @bind-Value="analyzerAssemblyLoadContextPath" Label=@Labels.AssemblyLoadContextPath Variant="Variant.Outlined" />
+                </MudItem>
             }
             else if (commandType == "Custom Processor")
             {
@@ -204,6 +207,7 @@
     private List<SavedRunItem> savedRuns = new();
     private string? newSavedRunName;
     private string? saveRunError;
+    private string? analyzerAssemblyLoadContextPath;
 
     protected override async Task OnInitializedAsync()
     {
@@ -242,7 +246,8 @@
             {
                 AnalyzerProject = analyzerProject,
                 TargetProject = targetProject,
-                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()).Where(a => !string.IsNullOrWhiteSpace(a)) ?? Array.Empty<string>()
+                AnalyzerNames = analyzerNames?.Split(",").Select(a => a.Trim()).Where(a => !string.IsNullOrWhiteSpace(a)) ?? Array.Empty<string>(),
+                AssemblyLoadContextPath = analyzerAssemblyLoadContextPath
             };
             var serializedContext = JsonSerializer.Serialize(analyzerContext);
 
@@ -311,6 +316,7 @@
                 analyzerNames = analyzerContext?.AnalyzerNames is not null
                     ? string.Join(",", analyzerContext.AnalyzerNames)
                     : string.Empty;
+                analyzerAssemblyLoadContextPath = analyzerContext?.AssemblyLoadContextPath;
             }
             catch
             {
@@ -388,6 +394,7 @@
         public string? AnalyzerProject { get; set; }
         public string? TargetProject { get; set; }
         public IEnumerable<string>? AnalyzerNames { get; set; }
+        public string? AssemblyLoadContextPath { get; set; }
     }
 
     public class Labels
