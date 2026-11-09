@@ -1,12 +1,15 @@
 using System;
+using System.Text.Json;
+using RoslynRunner.Core;
 
 namespace RoslynRunner.Utilities.InvocationTrees;
 
 internal class InvocationTreeD3Writer
 {
-    public static string GetD3GraphForCallers(IEnumerable<InvocationMethod> methods)
+    public static string GetD3GraphForCallers(IEnumerable<InvocationMethod> methods, InvocationRoot invocationRoot)
     {
         string jsonData = InvocationTreeJsonWriter.WriteInvocationTreeToJson(methods);
+        string rootIds = JsonSerializer.Serialize(invocationRoot.Methods.Select(m => m.MethodSymbol.GetMethodId()));
         string htmlContent = $$"""
 <!DOCTYPE html>
 <html lang="en">
@@ -39,6 +42,7 @@ internal class InvocationTreeD3Writer
     const tooltip = d3.select('#tooltip');
 
     const jsonData = {{jsonData}}  // Embedded JSON data
+    const startingMethodIds = {{rootIds}};
 
     const map = new Map(jsonData.map(d => [d.identifier, d]));
 
@@ -53,8 +57,24 @@ internal class InvocationTreeD3Writer
       return { id, data: d, children };
     }
 
-    const rootId = jsonData[0]?.identifier;
-    const rootObj = buildNode(rootId);
+    // Caller traversal returns endpoints first. Start at the requested controller methods.
+    let rootIds = startingMethodIds.filter(id => map.has(id));
+    if (!rootIds.length) {
+      const childIds = new Set(jsonData.flatMap(d =>
+        [...d.invokedMethodIdentifiers, ...d.implementationIdentifiers]));
+      rootIds = jsonData.filter(d => !childIds.has(d.identifier)).map(d => d.identifier);
+    }
+    // A graph consisting entirely of a cycle has no natural root.
+    if (!rootIds.length && jsonData.length) rootIds = [jsonData[0].identifier];
+    const roots = rootIds.map(buildNode).filter(Boolean);
+    if (!roots.length) {
+      svg.append('text').attr('x', 20).attr('y', 30).text('No matching call chains.');
+    } else {
+    const rootObj = roots.length === 1 ? roots[0] : {
+      id: 'call-chains',
+      data: { containingTypeFqdn: '', methodSignature: '', methodName: 'Call chains' },
+      children: roots
+    };
     const root = d3.hierarchy(rootObj, d => d.children);
 
     // margins & layout
@@ -68,11 +88,10 @@ internal class InvocationTreeD3Writer
     const g = zoomGroup.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    svg.call(
-      d3.zoom()
-        .scaleExtent([0.5, 3])
-        .on('zoom', event => zoomGroup.attr('transform', event.transform))
-    );
+    const zoom = d3.zoom()
+      .scaleExtent([0.01, 3])
+      .on('zoom', event => zoomGroup.attr('transform', event.transform));
+    svg.call(zoom);
 
     // draw links with vertical orientation
     g.selectAll('.link')
@@ -104,6 +123,18 @@ internal class InvocationTreeD3Writer
       .attr('text-anchor', 'middle')
       .text(d => d.data.data.methodName)
       .clone(true).lower().attr('stroke', 'white');
+
+    // Center the entire tree, including branches with negative x coordinates.
+    const bounds = g.node().getBBox();
+    const padding = 40;
+    const scale = Math.max(0.01, Math.min(1,
+      (width - padding * 2) / Math.max(bounds.width, 1),
+      (height - padding * 2) / Math.max(bounds.height, 1)));
+    svg.call(zoom.transform, d3.zoomIdentity
+      .translate(width / 2 - scale * (bounds.x + bounds.width / 2),
+                 height / 2 - scale * (bounds.y + bounds.height / 2))
+      .scale(scale));
+    }
   </script>
 </body>
 </html>
