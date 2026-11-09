@@ -49,7 +49,7 @@ public class TestAssemblyLoadContext : AssemblyLoadContext
             string assemblyPath = Path.Combine(_libDirectory, assemblyFileName);
             if (File.Exists(assemblyPath))
             {
-                localAssembly = LoadFromAssemblyPath(assemblyPath);
+                localAssembly = LoadFromPathIntoMemory(assemblyPath);
                 if (localAssembly != null)
                 {
                     return localAssembly;
@@ -62,7 +62,7 @@ public class TestAssemblyLoadContext : AssemblyLoadContext
             string? resolvedPath = _resolver.ResolveAssemblyToPath(name);
             if (resolvedPath != null)
             {
-                localAssembly = LoadFromAssemblyPath(resolvedPath);
+                localAssembly = LoadFromPathIntoMemory(resolvedPath);
                 if (localAssembly != null)
                 {
                     return localAssembly;
@@ -78,5 +78,21 @@ public class TestAssemblyLoadContext : AssemblyLoadContext
         
 
         return null;
+    }
+
+    private Assembly? LoadFromPathIntoMemory(string assemblyPath)
+    {
+        byte[] assemblyBytes = File.ReadAllBytes(assemblyPath);
+        using MemoryStream assemblyStream = new MemoryStream(assemblyBytes);
+
+        string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
+        if (File.Exists(pdbPath))
+        {
+            byte[] pdbBytes = File.ReadAllBytes(pdbPath);
+            using MemoryStream pdbStream = new MemoryStream(pdbBytes);
+            return LoadFromStream(assemblyStream, pdbStream);
+        }
+
+        return LoadFromStream(assemblyStream, null);
     }
 }
