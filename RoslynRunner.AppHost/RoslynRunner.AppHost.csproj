@@ -9,6 +9,7 @@
     <PackageReference Include="Aspire.Hosting.AppHost" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.NET.StringTools" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RoslynRunner\RoslynRunner.csproj" />
