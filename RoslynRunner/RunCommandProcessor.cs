@@ -14,6 +14,12 @@ namespace RoslynRunner;
 public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFactory loggerFactory)
 {
     private static readonly Meter Meter = new("RoslynRunner.RunCommandProcessor");
+
+    private static readonly Histogram<double> TotalExecutionDuration = Meter.CreateHistogram<double>(
+       "runcommand.total.duration",
+       unit: "ms",
+       description: "Time taken to execute all steps for RunCommand requests.");
+        
     private static readonly Histogram<double> CompilationDurationHistogram = Meter.CreateHistogram<double>(
         "runcommand.compilation.duration",
         unit: "ms",
@@ -41,6 +47,7 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
 
     public async Task ProcessRunCommand(RunCommand runCommand, CancellationToken cancellationToken)
     {
+        var totalStopwatch = Stopwatch.StartNew();
         logger.LogInformation("Processing run command for {PrimarySolution} using {ProcessorName}",
             runCommand.PrimarySolution,
             runCommand.ProcessorName);
@@ -174,6 +181,8 @@ public class RunCommandProcessor(ILogger<RunCommandProcessor> logger, ILoggerFac
             runCommand.PrimarySolution,
             executionStopwatch.Elapsed.TotalMilliseconds);
         loadContext?.Unload();
+        totalStopwatch.Stop();
+        TotalExecutionDuration.Record(totalStopwatch.Elapsed.TotalMilliseconds, CreateCommonTags(runCommand));
     }
 
     private async Task ProcessInstance<T>(ISolutionProcessor<T> instance, Solution solution, string? context,
