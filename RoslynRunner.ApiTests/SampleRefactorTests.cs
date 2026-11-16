@@ -10,6 +10,14 @@ namespace RoslynRunner.ApiTests;
 
 public class SampleRefactorTests
 {
+    [OneTimeTearDown]
+    public void CleanupGeneratedSampleFiles()
+    {
+        var sampleRoot = Path.Combine(AppContext.BaseDirectory!, "samples", "LegacyWebApp", "ModernWebApi");
+        File.Delete(Path.Combine(sampleRoot, "Endpoints", "SampleEndpoint.cs"));
+        File.Delete(Path.Combine(sampleRoot, "Services", "RecursiveServiceAsync.cs"));
+    }
+
     [Test]
     public async Task ApiCanRunSampleConversion()
     {
