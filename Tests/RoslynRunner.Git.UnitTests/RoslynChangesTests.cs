@@ -89,7 +89,7 @@ public class SomeClass
         changes.NewChangeSet("b", "Update MethodB").ReplaceMethod(document, methods.MethodB, AddCancellationToken(methods.MethodB));
 
         var branchName = $"feature/{Guid.NewGuid():N}";
-        await changes.ApplyAllAsync(branchName, "Add CancellationToken to both methods", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        await changes.ApplyAllAsync(branchName, "Add CancellationToken to both methods", cleanup: true, cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
         using var repo = new Repository(repository.RepositoryPath);
         var branch = repo.Branches[branchName];
@@ -119,7 +119,7 @@ public class SomeClass
         changes.NewChangeSet("b", "Update MethodB").ReplaceMethod(document, methods.MethodB, AddCancellationToken(methods.MethodB));
 
         var branchName = $"feature/{Guid.NewGuid():N}";
-        await changes.ApplyAllAsync(branchName, "Combined message", commitChangeSetsSeparately: true, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        await changes.ApplyAllAsync(branchName, "Combined message", commitChangeSetsSeparately: true, cleanup: true, cancellationToken: CancellationToken.None).ConfigureAwait(false);
 
         using var repo = new Repository(repository.RepositoryPath);
         var branch = repo.Branches[branchName];

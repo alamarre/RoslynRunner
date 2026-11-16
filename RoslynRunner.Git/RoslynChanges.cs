@@ -347,12 +347,12 @@ public sealed class RoslynChanges
         return repo.CreateBranch(branchName, baseBranch.Tip);
     }
 
-    private static void StageDocuments(Repository repo, IEnumerable<Document> documents, CancellationToken cancellationToken)
+    private void StageDocuments(Repository repo, IEnumerable<Document> documents, CancellationToken cancellationToken)
     {
         foreach (var document in documents)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var relativePath = Path.GetRelativePath(repo.Info.WorkingDirectory, document.FilePath!);
+            var relativePath = Path.GetRelativePath(_repositoryPath, document.FilePath!);
             Commands.Stage(repo, relativePath);
         }
     }

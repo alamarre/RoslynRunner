@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace RoslynRunner.ApiTests;
 
@@ -42,7 +41,6 @@ public class AppContext
 
         App = new CustomWebAppFactory();
         HttpClient = App.CreateClient();
-        HttpClient.BaseAddress = App.BaseAddress;
 
         var pingResult = await HttpClient.GetAsync("/ping");
         Assert.That(pingResult.IsSuccessStatusCode, "Ping failed");
@@ -76,7 +74,7 @@ public class AppContext
             return;
         }
 
-        var startInfo = new ProcessStartInfo("dotnet", $"restore \"{solutionPath}\"")
+        var startInfo = new ProcessStartInfo("dotnet", $"restore \"{solutionPath}\" --disable-build-servers")
         {
             WorkingDirectory = Path.GetDirectoryName(solutionPath)!,
             RedirectStandardOutput = true,
@@ -92,10 +90,24 @@ public class AppContext
             throw new InvalidOperationException("Failed to start dotnet restore process.");
         }
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-
-        await Task.WhenAll(process.WaitForExitAsync(), stdoutTask, stderrTask);
+        // Reused MSBuild workers can inherit these pipes and keep ReadToEndAsync
+        // waiting after restore exits. Disable reuse above and bound the reads too.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await Task.WhenAll(process.WaitForExitAsync(), stdoutTask, stderrTask).WaitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+            throw new TimeoutException($"dotnet restore for {solutionPath} exceeded two minutes.");
+        }
 
         if (process.ExitCode != 0)
         {

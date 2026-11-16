@@ -91,33 +91,55 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
                 if (diagram.Filter != null)
                 {
                     var filteredMethods = diagramMethods
-                        .Where(m => m.InvokedMethods.AsQueryable().Where(diagram.Filter, symbol!.ContainingAssembly.Name).Any())
+                        .Where(m => m.InvokedMethods.Values.AsQueryable().Where(diagram.Filter, symbol!.ContainingAssembly.Name).Any())
                         .ToArray();
+                    IEnumerable<InvocationMethod> GetCallChains(IEnumerable<InvocationMethod> endpoints)
+                    {
+                        var endpointMethods = endpoints.ToArray();
+                        var callers = DedupingQueueRunner.ProcessResults(
+                            i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), endpointMethods);
+                        var matchingCalls = endpointMethods.SelectMany(m => m.InvokedMethods.Values
+                            .AsQueryable().Where(diagram.Filter, symbol!.ContainingAssembly.Name));
+                        return callers.Concat(matchingCalls).Distinct();
+                    }
+
                     if (diagram.SeparateDiagrams)
                     {
+                        var paths = new InvocationPathBuilder(results, validMethods);
                         foreach (var method in filteredMethods)
                         {
-                            var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), new[] { method });
-                            var result = await GetDiagram(diagram, results, callChains);
+                            var matchingCalls = method.InvokedMethods.Values.AsQueryable()
+                                .Where(diagram.Filter, symbol!.ContainingAssembly.Name)
+                                .DistinctBy(m => m.MethodSymbol, SymbolEqualityComparer.Default).ToArray();
+                            for (var callIndex = 0; callIndex < matchingCalls.Length; callIndex++)
+                            {
+                                var callChain = paths.CreatePath(method, matchingCalls[callIndex]);
+                                if (callChain.Count == 0)
+                                {
+                                    continue;
+                                }
+                                var result = await GetDiagram(diagram, new InvocationRoot([callChain[0]]), callChain);
 
-                            var fileName = method.MethodSymbol.ContainingType.ToDisplayString() + "." +
-                                           method.MethodSymbol.Name + extension;
-                            fileName = fileName.Replace('<', '_').Replace('>', '_');
-                            try
-                            {
-                                var path = Path.Combine(diagram.OutputPath, fileName);
-                                await File.WriteAllTextAsync(path, result);
-                                runContext.Output.Add($"wrote diagram {path}");
-                            }
-                            catch (Exception e)
-                            {
-                                Console.WriteLine(e);
+                                var suffix = callIndex == 0 ? "" : $"_{callIndex + 1}";
+                                var fileName = method.MethodSymbol.ContainingType.ToDisplayString() + "." +
+                                               method.MethodSymbol.Name + suffix + extension;
+                                fileName = fileName.Replace('<', '_').Replace('>', '_');
+                                try
+                                {
+                                    var path = Path.Combine(diagram.OutputPath, fileName);
+                                    await File.WriteAllTextAsync(path, result);
+                                    runContext.Output.Add($"wrote diagram {path}");
+                                }
+                                catch (Exception e)
+                                {
+                                    Console.WriteLine(e);
+                                }
                             }
                         }
                     }
                     else
                     {
-                        var callChains = DedupingQueueRunner.ProcessResults(i => i.Callers.Where(c => validMethods.Contains(c.MethodSymbol)), filteredMethods);
+                        var callChains = GetCallChains(filteredMethods);
                         var result = await GetDiagram(diagram, results, callChains);
                         var path = Path.Combine(diagram.OutputPath, diagram.Name + extension);
                         await File.WriteAllTextAsync(path, result);
@@ -144,7 +166,7 @@ public class InvocationTreeProcessor : ISolutionProcessor<InvocationTreeProcesso
             "dot" => await InvocationTreeDotGraphWriter.GetDotGraphForCallers(diagramMethods, diagram.WriteAllMethods),
             "JSON" => InvocationTreeJsonWriter.WriteInvocationTreeToJson(diagramMethods),
             "mermaid" => InvocationTreeMermaidWriter.GetMermaidDagForInvocationTree(invocationRoot, diagramMethods.ToHashSet(), diagram.WriteAllMethods),
-            "d3" => InvocationTreeD3Writer.GetD3GraphForCallers(diagramMethods),
+            "d3" => InvocationTreeD3Writer.GetD3GraphForCallers(diagramMethods, invocationRoot),
             _ => throw new NotImplementedException($"Diagram type {diagram.DiagramType} is not supported"),
         };
     }

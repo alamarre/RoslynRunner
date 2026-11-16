@@ -1,15 +1,21 @@
-using System;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using RoslynRunner.Abstractions;
 using RoslynRunner.Utilities.InvocationTrees;
-using YamlDotNet.Serialization;
 
 namespace RoslynRunner.ApiTests;
 
 public class SampleRefactorTests
 {
+    [OneTimeTearDown]
+    public void CleanupGeneratedSampleFiles()
+    {
+        var sampleRoot = Path.Combine(AppContext.BaseDirectory!, "samples", "LegacyWebApp", "ModernWebApi");
+        File.Delete(Path.Combine(sampleRoot, "Endpoints", "SampleEndpoint.cs"));
+        File.Delete(Path.Combine(sampleRoot, "Services", "RecursiveServiceAsync.cs"));
+    }
+
     [Test]
     public async Task ApiCanRunSampleConversion()
     {
@@ -47,7 +53,7 @@ public class SampleRefactorTests
             Context: ctx1
         );
 
-        var runResponse = await ValidateRun(runCommand);
+        using var runResponse = await ValidateRun(runCommand);
 
         var runResult = await runResponse.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
         Assert.That(runResult?.Errors, Is.Empty);
@@ -64,21 +70,17 @@ public class SampleRefactorTests
     {
         var baseDirectory = AppContext.BaseDirectory!;
         var sampleRoot = Path.Combine(baseDirectory, "samples", "LegacyWebApp");
-        // create temporary directory
-        var tempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDirectory);
-
         var legacyWebappSln = Path.Combine(sampleRoot, "LegacyWebApp.sln");
         Assert.That(File.Exists(legacyWebappSln), Is.True);
 
-        var uncachedRunResult = await GetCallChainResult(sampleRoot, legacyWebappSln, false);
-        var cachedRunResult = await GetCallChainResult(sampleRoot, legacyWebappSln, true);
+        var uncachedRunResult = await GetCallChainResult(legacyWebappSln, false);
+        var cachedRunResult = await GetCallChainResult(legacyWebappSln, true);
 
         // do an unordered equality check
         Assert.That(uncachedRunResult, Is.EquivalentTo(cachedRunResult));
     }
 
-    private static async Task<IEnumerable<MethodCallInfo>> GetCallChainResult(string sampleRoot, string legacyWebappSln, bool useCache)
+    private static async Task<IEnumerable<MethodCallInfo>> GetCallChainResult(string legacyWebappSln, bool useCache)
     {
         var tempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDirectory);
@@ -107,29 +109,51 @@ public class SampleRefactorTests
                         UseCache: useCache
                     ))
                 );
-        await ValidateRun(runCommand);
-        // read file from temp directory
-        var result = JsonSerializer.Deserialize<List<MethodCallInfo>>(File.ReadAllText(Path.Combine(tempDirectory, "SampleEndpoint.json")));
-        return result!;
+        try
+        {
+            using var response = await ValidateRun(runCommand);
+            var runResult = await response.Content.ReadFromJsonAsync<RunContext>(AppContext.JsonSerializerOptions);
+            Assert.That(runResult?.Errors, Is.Empty);
+            return JsonSerializer.Deserialize<List<MethodCallInfo>>(
+                await File.ReadAllTextAsync(Path.Combine(tempDirectory, "SampleEndpoint.json")))!;
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
     }
 
     private static async Task<HttpResponseMessage> ValidateRun(RunCommand runCommand)
     {
-        var response = await AppContext.HttpClient.PostAsJsonAsync("runs", runCommand);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        using var response = await AppContext.HttpClient.PostAsJsonAsync("runs", runCommand, timeout.Token);
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
 
         var run = await response.Content.ReadFromJsonAsync<Run>(new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
-        });
+        }, timeout.Token);
         Assert.That(run, Is.Not.Null);
         Assert.That(run?.RunId, Is.Not.EqualTo(Guid.Empty));
-        HttpResponseMessage runResponse = await AppContext.HttpClient.GetAsync($"runs/{run.RunId}");
-        while ((int)runResponse.StatusCode == StatusCodes.Status202Accepted)
+        try
         {
-            runResponse = await AppContext.HttpClient.GetAsync($"runs/{run.RunId}");
+            while (true)
+            {
+                var runResponse = await AppContext.HttpClient.GetAsync($"runs/{run.RunId}", timeout.Token);
+                if ((int)runResponse.StatusCode != StatusCodes.Status202Accepted)
+                {
+                    Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
+                    return runResponse;
+                }
+
+                runResponse.Dispose();
+                await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token);
+            }
         }
-        Assert.That((int)runResponse.StatusCode, Is.EqualTo(200));
-        return runResponse;
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            Assert.Fail($"Run {run.RunId} ({runCommand.ProcessorName}) did not finish within two minutes.");
+            throw;
+        }
     }
 }
